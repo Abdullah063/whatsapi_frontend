@@ -54,7 +54,7 @@ export interface PreviewResult {
   renderedReply: string | null;
 }
 
-export type AutomationActivityState = 'QUEUED' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'DEAD' | 'FALLBACK';
+export type AutomationActivityState = 'QUEUED' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'DEAD' | 'CANCELLED' | 'FALLBACK';
 
 export interface AutomationQueueSummary {
   queued: number;

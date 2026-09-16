@@ -54,6 +54,7 @@ const activityStateMeta: Record<AutomationActivityState, { label: string; icon: 
   RETRY: { label: 'Yeniden denenecek', icon: 'solar:restart-linear', className: 'bg-lightwarning text-warning' },
   COMPLETED: { label: 'Tamamlandı', icon: 'solar:check-circle-linear', className: 'bg-lightsuccess text-success' },
   DEAD: { label: 'Başarısız', icon: 'solar:danger-circle-linear', className: 'bg-lighterror text-error' },
+  CANCELLED: { label: 'İnsan devraldı', icon: 'solar:user-hand-up-linear', className: 'bg-lightwarning text-warning' },
   FALLBACK: { label: 'Yedek cevap', icon: 'solar:shield-warning-linear', className: 'bg-lightsecondary text-secondary' },
 };
 
@@ -364,8 +365,8 @@ export default function AutomationsPage() {
                 <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{item.ruleName}</h3><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${state.className}`}><Icon icon={state.icon} />{state.label}</span><Badge variant={responseTypeMeta[item.responseType].badge}>{responseTypeMeta[item.responseType].label}</Badge></div><p className="mt-1.5 text-xs text-muted-foreground">{item.customerWaId} · {formatDate(item.occurredAt)}{item.attempts > 0 ? ` · ${item.attempts} deneme` : ''}</p></div>
                 {item.outboundStatus && <Badge variant={item.outboundStatus === 'FAILED' ? 'lightError' : item.outboundStatus === 'READ' || item.outboundStatus === 'DELIVERED' ? 'lightSuccess' : 'gray'}>WhatsApp: {item.outboundStatus}</Badge>}
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-xl bg-muted/50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Gelen mesaj</p><p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm">{item.inboundText || 'Metin içermiyor'}</p></div><div className="rounded-xl bg-muted/50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Otomatik cevap</p><p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm">{item.outboundText || (item.state === 'DEAD' ? 'Cevap üretilemedi' : 'Henüz oluşturuluyor…')}</p></div></div>
-              {item.lastError && <div className="mt-3 rounded-lg bg-lighterror px-3 py-2 text-xs text-error"><span className="font-semibold">Son hata:</span> {item.lastError}</div>}
+              <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-xl bg-muted/50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Gelen mesaj</p><p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm">{item.inboundText || 'Metin içermiyor'}</p></div><div className="rounded-xl bg-muted/50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Otomatik cevap</p><p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm">{item.outboundText || (item.state === 'DEAD' ? 'Cevap üretilemedi' : item.state === 'CANCELLED' ? 'İnsan devraldığı için gönderilmedi' : 'Henüz oluşturuluyor…')}</p></div></div>
+              {item.lastError && item.state !== 'CANCELLED' && <div className="mt-3 rounded-lg bg-lighterror px-3 py-2 text-xs text-error"><span className="font-semibold">Son hata:</span> {item.lastError}</div>}
             </div>;
           })}
         </CardContent></Card>}

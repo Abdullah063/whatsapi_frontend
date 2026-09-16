@@ -6,6 +6,7 @@ export interface Conversation {
   customerWaId: string;
   customerName: string | null;
   status: string;
+  automationEnabled: boolean;
   lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
@@ -53,6 +54,16 @@ interface Page<T> {
 
 export function listConversations(accountId: string): Promise<Page<Conversation>> {
   return apiRequest(`/api/v1/whatsapp/accounts/${accountId}/conversations?page=0&size=100`);
+}
+
+export function updateConversationAutomation(
+  conversationId: string,
+  enabled: boolean,
+): Promise<Conversation> {
+  return apiRequest(`/api/v1/whatsapp/conversations/${conversationId}/automation`, {
+    method: 'PATCH',
+    body: jsonBody({ enabled }),
+  });
 }
 
 export async function listRecentMessages(conversationId: string): Promise<Page<Message>> {

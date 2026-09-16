@@ -6,7 +6,7 @@ import { Button } from 'src/components/ui/button';
 import { listAccounts } from 'src/features/accounts/api/accounts-api';
 import { listMediaAssets, uploadMediaAsset, type MediaAsset } from 'src/features/media/api/media-assets-api';
 import { apiErrorMessage } from 'src/shared/api/error-message';
-import { listConversations, listRecentMessages, sendMediaMessage, sendTextMessage, uploadAndSendMediaMessage, type Message } from '../api/messaging-api';
+import { listConversations, listRecentMessages, sendMediaMessage, sendTextMessage, updateConversationAutomation, uploadAndSendMediaMessage, type Conversation, type Message } from '../api/messaging-api';
 import ConversationList from '../ui/ConversationList';
 import MessageThread from '../ui/MessageThread';
 
@@ -98,6 +98,19 @@ export default function InboxPage() {
     onSuccess: messageQueued,
   });
 
+  const toggleAutomation = useMutation({
+    mutationFn: (enabled: boolean) => updateConversationAutomation(selectedConversation!.id, enabled),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<{ content: Conversation[]; page: number; size: number; totalElements: number }>(
+        ['whatsapp', 'conversations', accountId],
+        (current) => current ? {
+          ...current,
+          content: current.content.map((conversation) => conversation.id === updated.id ? updated : conversation),
+        } : current,
+      );
+    },
+  });
+
   function selectAccount(nextAccountId: string) {
     setDraftRecipient(undefined);
     setParams({ accountId: nextAccountId });
@@ -125,7 +138,7 @@ export default function InboxPage() {
       {conversations.isError && <div className="rounded-md bg-lighterror p-3 text-sm text-error">{apiErrorMessage(conversations.error)}</div>}
       <div className="overflow-hidden rounded-xl border border-border shadow-sm lg:grid lg:grid-cols-[330px_minmax(0,1fr)]">
         <div className={hasThread ? 'hidden lg:block' : 'block'}><ConversationList conversations={conversations.data?.content || []} selectedId={selectedConversation?.id} loading={conversations.isPending} onSelect={(conversation) => { setDraftRecipient(undefined); setParams({ accountId: accountId!, conversationId: conversation.id }); }} onStartConversation={(recipient) => { setDraftRecipient(recipient); setParams({ accountId: accountId! }); }} /></div>
-        <div className={hasThread ? 'block' : 'hidden lg:block'}><MessageThread conversation={selectedConversation} draftRecipient={draftRecipient} messages={messages.data?.content || []} loading={messages.isPending && Boolean(selectedConversation)} sending={send.isPending} mediaAssets={mediaAssets.data || []} mediaLoading={mediaAssets.isPending} mediaSending={sendMedia.isPending || uploadAndSendMedia.isPending} error={send.isError ? apiErrorMessage(send.error) : sendMedia.isError ? apiErrorMessage(sendMedia.error) : uploadAndSendMedia.isError ? apiErrorMessage(uploadAndSendMedia.error) : mediaAssets.isError ? apiErrorMessage(mediaAssets.error) : messages.isError ? apiErrorMessage(messages.error) : null} onBack={closeThread} onSend={async (text) => { try { await send.mutateAsync(text); return true; } catch { return false; } }} onSendMedia={async (asset, caption) => { try { await sendMedia.mutateAsync({ asset, caption }); return true; } catch { return false; } }} onUploadMedia={async (file, name, caption, saveToGallery) => { try { await uploadAndSendMedia.mutateAsync({ file, name, caption, saveToGallery }); return true; } catch { return false; } }} /></div>
+        <div className={hasThread ? 'block' : 'hidden lg:block'}><MessageThread conversation={selectedConversation} draftRecipient={draftRecipient} messages={messages.data?.content || []} loading={messages.isPending && Boolean(selectedConversation)} sending={send.isPending} mediaAssets={mediaAssets.data || []} mediaLoading={mediaAssets.isPending} mediaSending={sendMedia.isPending || uploadAndSendMedia.isPending} togglingAutomation={toggleAutomation.isPending} error={send.isError ? apiErrorMessage(send.error) : sendMedia.isError ? apiErrorMessage(sendMedia.error) : uploadAndSendMedia.isError ? apiErrorMessage(uploadAndSendMedia.error) : toggleAutomation.isError ? apiErrorMessage(toggleAutomation.error) : mediaAssets.isError ? apiErrorMessage(mediaAssets.error) : messages.isError ? apiErrorMessage(messages.error) : null} onBack={closeThread} onToggleAutomation={(enabled) => toggleAutomation.mutate(enabled)} onSend={async (text) => { try { await send.mutateAsync(text); return true; } catch { return false; } }} onSendMedia={async (asset, caption) => { try { await sendMedia.mutateAsync({ asset, caption }); return true; } catch { return false; } }} onUploadMedia={async (file, name, caption, saveToGallery) => { try { await uploadAndSendMedia.mutateAsync({ file, name, caption, saveToGallery }); return true; } catch { return false; } }} /></div>
       </div>
     </div>
   );
