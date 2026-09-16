@@ -4,6 +4,7 @@ import { Button } from 'src/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from 'src/components/ui/dialog';
 import { Input } from 'src/components/ui/input';
 import { Label } from 'src/components/ui/label';
+import { Switch } from 'src/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from 'src/components/ui/tabs';
 import { Textarea } from 'src/components/ui/textarea';
 import type { MediaAsset } from 'src/features/media/api/media-assets-api';
@@ -14,7 +15,7 @@ interface MediaAttachmentDialogProps {
   sending: boolean;
   error?: string | null;
   onSendAsset: (asset: MediaAsset, caption: string) => Promise<boolean>;
-  onUploadAndSend: (file: File, name: string, caption: string) => Promise<boolean>;
+  onUploadAndSend: (file: File, name: string, caption: string, saveToGallery: boolean) => Promise<boolean>;
 }
 
 function formatSize(value: number): string {
@@ -36,6 +37,7 @@ export default function MediaAttachmentDialog({
   const [selectedId, setSelectedId] = useState<string>();
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
+  const [saveToGallery, setSaveToGallery] = useState(false);
   const [caption, setCaption] = useState('');
   const [validationError, setValidationError] = useState<string>();
 
@@ -45,6 +47,7 @@ export default function MediaAttachmentDialog({
     setSelectedId(undefined);
     setFile(null);
     setName('');
+    setSaveToGallery(false);
     setCaption('');
     setValidationError(undefined);
     if (fileInput.current) fileInput.current.value = '';
@@ -64,7 +67,7 @@ export default function MediaAttachmentDialog({
         setValidationError('Göndermek için bir görsel veya PDF seçin.');
         return;
       }
-      sent = await onUploadAndSend(file, name.trim(), caption.trim());
+      sent = await onUploadAndSend(file, name.trim(), caption.trim(), saveToGallery);
     }
     if (sent) {
       setOpen(false);
@@ -88,7 +91,8 @@ export default function MediaAttachmentDialog({
         </TabsContent>
         <TabsContent value="upload" className="mt-4 space-y-4">
           <div><Label htmlFor="message-media-file">Dosya</Label><Input ref={fileInput} id="message-media-file" type="file" className="mt-2" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(event) => setFile(event.target.files?.[0] || null)} /><p className="mt-1 text-xs text-muted-foreground">PNG, JPEG, WebP veya PDF · En fazla 10 MB</p></div>
-          <div><Label htmlFor="message-media-name">Galeri adı (isteğe bağlı)</Label><Input id="message-media-name" className="mt-2" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} placeholder="Eylül fiyat listesi" /></div>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4"><div><Label htmlFor="save-message-media" className="cursor-pointer">Galeriye de kaydet</Label><p className="mt-1 text-xs text-muted-foreground">Kapalıyken dosya yalnızca bu mesaj için Meta'ya yüklenir.</p></div><Switch id="save-message-media" checked={saveToGallery} onCheckedChange={setSaveToGallery} /></div>
+          {saveToGallery ? <div><Label htmlFor="message-media-name">Galeride görünen ad (isteğe bağlı)</Label><Input id="message-media-name" className="mt-2" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} placeholder="Eylül fiyat listesi" /></div> : null}
         </TabsContent>
       </Tabs>
       <div><Label htmlFor="message-media-caption">Açıklama (isteğe bağlı)</Label><Textarea id="message-media-caption" className="mt-2" value={caption} maxLength={1024} onChange={(event) => setCaption(event.target.value)} placeholder="Dosyayla birlikte gönderilecek mesaj" /></div>

@@ -20,7 +20,7 @@ interface MessageThreadProps {
   error?: string | null;
   onSend: (text: string) => Promise<boolean>;
   onSendMedia: (asset: MediaAsset, caption: string) => Promise<boolean>;
-  onUploadMedia: (file: File, name: string, caption: string) => Promise<boolean>;
+  onUploadMedia: (file: File, name: string, caption: string, saveToGallery: boolean) => Promise<boolean>;
   onBack?: () => void;
 }
 

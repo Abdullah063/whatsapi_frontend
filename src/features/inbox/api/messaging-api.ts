@@ -91,3 +91,19 @@ export function sendMediaMessage(
     body: jsonBody({ recipientWaId, ...media }),
   });
 }
+
+export function uploadAndSendMediaMessage(
+  accountId: string,
+  recipientWaId: string,
+  file: File,
+  caption?: string,
+): Promise<Message> {
+  const body = new FormData();
+  body.append('recipientWaId', recipientWaId);
+  body.append('file', file);
+  if (caption?.trim()) body.append('caption', caption.trim());
+  return apiRequest(`/api/v1/whatsapp/accounts/${accountId}/messages/media-upload`, {
+    method: 'POST',
+    body,
+  });
+}
