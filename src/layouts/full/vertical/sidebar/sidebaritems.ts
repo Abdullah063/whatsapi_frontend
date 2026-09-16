@@ -27,6 +27,7 @@ const SidebarContent: SidebarItem[] = [
     children: [
       { id: uniqueId(), name: 'Hesaplar', icon: 'solar:smartphone-linear', url: '/whatsapp-accounts' },
       { id: uniqueId(), name: 'Otomatik cevaplar', icon: 'solar:bolt-linear', url: '/automations' },
+      { id: uniqueId(), name: 'Medya galerisi', icon: 'solar:gallery-wide-linear', url: '/media-library' },
       { id: uniqueId(), name: 'Şablonlar', icon: 'solar:document-text-linear', url: '/templates' },
     ],
   },

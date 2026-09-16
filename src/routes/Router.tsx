@@ -10,6 +10,7 @@ const DashboardPage = Loadable(lazy(() => import('../features/dashboard/pages/Da
 const AccountsPage = Loadable(lazy(() => import('../features/accounts/pages/AccountsPage')));
 const InboxPage = Loadable(lazy(() => import('../features/inbox/pages/InboxPage')));
 const AutomationsPage = Loadable(lazy(() => import('../features/automations/pages/AutomationsPage')));
+const MediaLibraryPage = Loadable(lazy(() => import('../features/media/pages/MediaLibraryPage')));
 const ProfilePage = Loadable(lazy(() => import('../features/profile/pages/ProfilePage')));
 const Login = Loadable(lazy(() => import('../views/authentication/auth2/Login')));
 const Register = Loadable(lazy(() => import('../views/authentication/auth2/Register')));
@@ -29,6 +30,7 @@ const router = createBrowserRouter([
           { path: 'whatsapp-accounts', element: <AccountsPage /> },
           { path: 'inbox', element: <InboxPage /> },
           { path: 'automations', element: <AutomationsPage /> },
+          { path: 'media-library', element: <MediaLibraryPage /> },
           { path: 'contacts', element: <ModulePage eyebrow="Kitle" title="Kişiler ve gruplar" description="Kişileri gruplandırın, toplu içe aktarın ve kara liste süreçlerini yönetin." icon="solar:users-group-rounded-linear" capabilities={['Kişi grupları', 'CSV içe aktarma', 'Toplu kişi ekleme', 'Kara liste yönetimi']} /> },
           { path: 'templates', element: <ModulePage eyebrow="İçerik" title="Mesaj şablonları" description="Meta hesabınızdaki onaylı şablonları senkronize edin ve kampanyalarda kullanın." icon="solar:document-text-linear" capabilities={['Meta şablon senkronizasyonu', 'Dil ve durum filtreleri', 'Değişken önizleme', 'Kampanya seçimi']} /> },
           { path: 'campaigns', element: <ModulePage eyebrow="Toplu gönderim" title="Kampanyalar" description="Kişi gruplarına kontrollü ve izlenebilir WhatsApp kampanyaları gönderin." icon="solar:rocket-linear" capabilities={['Kampanya oluşturma', 'Alıcı ve kota doğrulaması', 'Kuyruk ilerleme takibi', 'İptal ve sonuç raporu']} /> },

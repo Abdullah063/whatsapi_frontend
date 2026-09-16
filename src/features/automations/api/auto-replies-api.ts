@@ -1,7 +1,7 @@
 import { apiRequest, jsonBody } from 'src/shared/api/http';
 
 export type MatchType = 'EXACT' | 'STARTS_WITH' | 'CONTAINS' | 'ALL';
-export type ResponseType = 'STATIC_TEXT' | 'AI';
+export type ResponseType = 'STATIC_TEXT' | 'AI' | 'MEDIA';
 export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
 
 export interface AutoReplyRule {
@@ -13,6 +13,7 @@ export interface AutoReplyRule {
   responseType: ResponseType;
   replyText: string;
   aiSystemPrompt: string | null;
+  mediaAssetId: string | null;
   priority: number;
   enabled: boolean;
   scheduleStart: string | null;
@@ -35,6 +36,7 @@ export interface SaveAutoReplyRuleInput {
   responseType: ResponseType;
   replyText: string;
   aiSystemPrompt: string | null;
+  mediaAssetId: string | null;
   priority: number;
   enabled: boolean;
   scheduleStart: string | null;
@@ -120,6 +122,7 @@ export function ruleToInput(rule: AutoReplyRule): SaveAutoReplyRuleInput {
     responseType: rule.responseType,
     replyText: rule.replyText,
     aiSystemPrompt: rule.aiSystemPrompt,
+    mediaAssetId: rule.mediaAssetId,
     priority: rule.priority,
     enabled: rule.enabled,
     scheduleStart: rule.scheduleStart,
