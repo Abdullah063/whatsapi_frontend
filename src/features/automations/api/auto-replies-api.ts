@@ -52,6 +52,37 @@ export interface PreviewResult {
   renderedReply: string | null;
 }
 
+export type AutomationActivityState = 'QUEUED' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'DEAD' | 'FALLBACK';
+
+export interface AutomationQueueSummary {
+  queued: number;
+  processing: number;
+  retrying: number;
+  completed: number;
+  dead: number;
+}
+
+export interface AutomationActivityItem {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  responseType: ResponseType;
+  conversationId: string;
+  customerWaId: string;
+  inboundText: string | null;
+  outboundText: string | null;
+  outboundStatus: string | null;
+  state: AutomationActivityState;
+  attempts: number;
+  lastError: string | null;
+  occurredAt: string;
+}
+
+export interface AutomationActivity {
+  queue: AutomationQueueSummary;
+  items: AutomationActivityItem[];
+}
+
 const basePath = (accountId: string) => `/api/v1/whatsapp/accounts/${accountId}/auto-replies`;
 
 export function listAutoReplyRules(accountId: string): Promise<AutoReplyRule[]> {
@@ -75,6 +106,10 @@ export function previewAutoReply(accountId: string, message: string, customerWaI
     method: 'POST',
     body: jsonBody({ message, customerWaId }),
   });
+}
+
+export function getAutomationActivity(accountId: string, limit = 20): Promise<AutomationActivity> {
+  return apiRequest(`${basePath(accountId)}/activity?limit=${limit}`);
 }
 
 export function ruleToInput(rule: AutoReplyRule): SaveAutoReplyRuleInput {

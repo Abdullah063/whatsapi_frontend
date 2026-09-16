@@ -15,6 +15,7 @@ import { Textarea } from 'src/components/ui/textarea';
 import { listAccounts } from 'src/features/accounts/api/accounts-api';
 import { apiErrorMessage } from 'src/shared/api/error-message';
 import {
+  type AutomationActivityState,
   type AutoReplyRule,
   type DayOfWeek,
   type MatchType,
@@ -22,6 +23,7 @@ import {
   type SaveAutoReplyRuleInput,
   createAutoReplyRule,
   deleteAutoReplyRule,
+  getAutomationActivity,
   listAutoReplyRules,
   previewAutoReply,
   ruleToInput,
@@ -43,6 +45,15 @@ const matchLabels: Record<MatchType, string> = {
   STARTS_WITH: 'Şununla başlar',
   CONTAINS: 'İçerir',
   ALL: 'Tüm mesajlar',
+};
+
+const activityStateMeta: Record<AutomationActivityState, { label: string; icon: string; className: string }> = {
+  QUEUED: { label: 'Sırada', icon: 'solar:clock-circle-linear', className: 'bg-lightwarning text-warning' },
+  PROCESSING: { label: 'İşleniyor', icon: 'solar:refresh-circle-linear', className: 'bg-lightinfo text-info' },
+  RETRY: { label: 'Yeniden denenecek', icon: 'solar:restart-linear', className: 'bg-lightwarning text-warning' },
+  COMPLETED: { label: 'Tamamlandı', icon: 'solar:check-circle-linear', className: 'bg-lightsuccess text-success' },
+  DEAD: { label: 'Başarısız', icon: 'solar:danger-circle-linear', className: 'bg-lighterror text-error' },
+  FALLBACK: { label: 'Yedek cevap', icon: 'solar:shield-warning-linear', className: 'bg-lightsecondary text-secondary' },
 };
 
 const defaultAiPrompt = 'Sen bir WhatsApp müşteri destek asistanısın. Kullanıcının dilinde, kısa, net ve yardımsever cevap ver. Bilmediğin bilgileri uydurma; gerekirse bir yetkiliye yönlendir. Yalnızca müşteriye gönderilecek cevabı üret.';
@@ -153,6 +164,12 @@ export default function AutomationsPage() {
     queryKey: ['auto-replies', accountId],
     queryFn: () => listAutoReplyRules(accountId),
     enabled: Boolean(accountId),
+  });
+  const activity = useQuery({
+    queryKey: ['auto-replies', accountId, 'activity'],
+    queryFn: () => getAutomationActivity(accountId),
+    enabled: Boolean(accountId),
+    refetchInterval: 10_000,
   });
 
   const refreshRules = () => queryClient.invalidateQueries({ queryKey: ['auto-replies', accountId] });
@@ -276,6 +293,40 @@ export default function AutomationsPage() {
           <Card className="sticky top-5 gap-0 p-0 shadow-sm"><CardContent><div className="border-b border-border p-5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lightsecondary text-secondary"><Icon icon="solar:test-tube-linear" width={21} /></div><div><h2 className="font-semibold">Canlı önizleme</h2><p className="text-xs text-muted-foreground">Mesaj göndermeden eşleşmeyi test et</p></div></div></div><div className="space-y-4 p-5"><div><Label htmlFor="preview-message">Müşteri mesajı</Label><Textarea id="preview-message" rows={3} value={previewMessage} onChange={(event) => setPreviewMessage(event.target.value)} placeholder="Örn. Deneme" /></div><div><Label htmlFor="preview-phone">Müşteri telefonu</Label><Input id="preview-phone" className="mt-2" value={previewPhone} onChange={(event) => setPreviewPhone(event.target.value)} placeholder="905551234567" /></div><Button className="w-full" variant="secondary" disabled={!previewMessage.trim() || !previewPhone.trim() || preview.isPending} onClick={() => preview.mutate()}>{preview.isPending ? 'Test ediliyor…' : 'Kuralları test et'}</Button>{preview.isError && <div className="rounded-lg bg-lighterror p-3 text-sm text-error">{apiErrorMessage(preview.error)}</div>}{preview.data && <div className={`rounded-xl border p-4 ${preview.data.matched ? 'border-success/30 bg-lightsuccess' : 'border-warning/30 bg-lightwarning'}`}><div className="flex items-center gap-2 text-sm font-semibold"><Icon icon={preview.data.matched ? 'solar:check-circle-bold' : 'solar:danger-triangle-bold'} />{preview.data.matched ? preview.data.rule?.name : 'Eşleşen kural yok'}</div>{preview.data.rule?.responseType === 'AI' && <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-secondary"><Icon icon="solar:magic-stick-3-linear" />Groq tarafından üretildi</p>}{preview.data.renderedReply && <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{preview.data.renderedReply}</p>}</div>}</div></CardContent></Card>
         </aside>
       </div>
+
+      <section className="space-y-4">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+          <div><h2 className="text-lg font-semibold">Çalışma geçmişi</h2><p className="mt-1 text-sm text-muted-foreground">Otomatik cevapların üretim ve WhatsApp kuyruğu durumlarını canlı izleyin.</p></div>
+          <Button variant="outline" size="sm" disabled={activity.isFetching} onClick={() => activity.refetch()}><Icon icon="solar:refresh-linear" className={activity.isFetching ? 'animate-spin' : ''} />Yenile</Button>
+        </div>
+
+        {activity.data && <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[
+            { label: 'AI sırasında', value: activity.data.queue.queued, tone: 'text-warning' },
+            { label: 'İşleniyor', value: activity.data.queue.processing, tone: 'text-info' },
+            { label: 'Tekrar deneme', value: activity.data.queue.retrying, tone: 'text-warning' },
+            { label: 'AI tamamlanan', value: activity.data.queue.completed, tone: 'text-success' },
+            { label: 'AI başarısız', value: activity.data.queue.dead, tone: 'text-error' },
+          ].map((item) => <Card key={item.label} className="gap-0 p-4 shadow-sm"><CardContent><p className={`text-2xl font-semibold ${item.tone}`}>{numberFormatter.format(item.value)}</p><p className="mt-1 text-xs text-muted-foreground">{item.label}</p></CardContent></Card>)}
+        </div>}
+
+        {activity.isPending && <div className="h-44 animate-pulse rounded-2xl bg-muted" />}
+        {activity.isError && <Card><CardContent className="flex items-center justify-between gap-4"><p className="text-sm text-error">{apiErrorMessage(activity.error)}</p><Button variant="outline" size="sm" onClick={() => activity.refetch()}>Tekrar dene</Button></CardContent></Card>}
+        {activity.data?.items.length === 0 && <Card className="border-dashed"><CardContent className="py-8 text-center"><Icon icon="solar:history-linear" width={26} className="mx-auto text-muted-foreground" /><p className="mt-3 text-sm font-medium">Henüz çalışan otomasyon yok</p><p className="mt-1 text-xs text-muted-foreground">Bir kural eşleştiğinde ayrıntıları burada göreceksiniz.</p></CardContent></Card>}
+        {Boolean(activity.data?.items.length) && <Card className="gap-0 overflow-hidden p-0 shadow-sm"><CardContent className="divide-y divide-border">
+          {activity.data?.items.map((item) => {
+            const state = activityStateMeta[item.state];
+            return <div key={item.id} className="p-5 sm:p-6">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{item.ruleName}</h3><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${state.className}`}><Icon icon={state.icon} />{state.label}</span><Badge variant={item.responseType === 'AI' ? 'lightSecondary' : 'lightPrimary'}>{item.responseType === 'AI' ? 'Groq AI' : 'Sabit cevap'}</Badge></div><p className="mt-1.5 text-xs text-muted-foreground">{item.customerWaId} · {formatDate(item.occurredAt)}{item.attempts > 0 ? ` · ${item.attempts} deneme` : ''}</p></div>
+                {item.outboundStatus && <Badge variant={item.outboundStatus === 'FAILED' ? 'lightError' : item.outboundStatus === 'READ' || item.outboundStatus === 'DELIVERED' ? 'lightSuccess' : 'gray'}>WhatsApp: {item.outboundStatus}</Badge>}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-xl bg-muted/50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Gelen mesaj</p><p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm">{item.inboundText || 'Metin içermiyor'}</p></div><div className="rounded-xl bg-muted/50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Otomatik cevap</p><p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm">{item.outboundText || (item.state === 'DEAD' ? 'Cevap üretilemedi' : 'Henüz oluşturuluyor…')}</p></div></div>
+              {item.lastError && <div className="mt-3 rounded-lg bg-lighterror px-3 py-2 text-xs text-error"><span className="font-semibold">Son hata:</span> {item.lastError}</div>}
+            </div>;
+          })}
+        </CardContent></Card>}
+      </section>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto p-0">
