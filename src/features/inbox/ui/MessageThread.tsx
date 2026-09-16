@@ -2,8 +2,11 @@ import { Icon } from '@iconify/react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Button } from 'src/components/ui/button';
 import { Textarea } from 'src/components/ui/textarea';
+import type { MediaAsset } from 'src/features/media/api/media-assets-api';
+import { apiResourceUrl } from 'src/shared/api/http';
 import type { Conversation, Message } from '../api/messaging-api';
 import { contactLabel, formatPhone, messageText, messageTime, statusLabel } from '../lib/message-format';
+import MediaAttachmentDialog from './MediaAttachmentDialog';
 
 interface MessageThreadProps {
   conversation?: Conversation;
@@ -11,12 +14,30 @@ interface MessageThreadProps {
   messages: Message[];
   loading: boolean;
   sending: boolean;
+  mediaAssets: MediaAsset[];
+  mediaLoading: boolean;
+  mediaSending: boolean;
   error?: string | null;
   onSend: (text: string) => Promise<boolean>;
+  onSendMedia: (asset: MediaAsset, caption: string) => Promise<boolean>;
+  onUploadMedia: (file: File, name: string, caption: string) => Promise<boolean>;
   onBack?: () => void;
 }
 
-export default function MessageThread({ conversation, draftRecipient, messages, loading, sending, error, onSend, onBack }: MessageThreadProps) {
+function MediaContent({ message }: { message: Message }) {
+  const media = message.content?.media;
+  if (!media) return <p className="whitespace-pre-wrap break-words">{messageText(message)}</p>;
+  const source = media.link || (media.mediaId ? apiResourceUrl(`/api/v1/whatsapp/messages/${message.id}/media`) : null);
+  const caption = media.caption;
+
+  if (message.type === 'IMAGE' && source) return <><a href={source} target="_blank" rel="noreferrer"><img src={source} alt={caption || media.filename || 'WhatsApp görseli'} className="max-h-80 w-full min-w-48 rounded-lg object-contain" /></a>{caption ? <p className="mt-2 whitespace-pre-wrap break-words">{caption}</p> : null}</>;
+  if (message.type === 'VIDEO' && source) return <><video src={source} controls preload="metadata" className="max-h-80 w-full min-w-56 rounded-lg" />{caption ? <p className="mt-2 whitespace-pre-wrap break-words">{caption}</p> : null}</>;
+  if (message.type === 'AUDIO' && source) return <audio src={source} controls preload="metadata" className="max-w-full" />;
+  if (message.type === 'DOCUMENT' && source) return <><a href={source} target="_blank" rel="noreferrer" className="flex min-w-52 items-center gap-3 rounded-lg bg-black/5 p-3 hover:bg-black/10"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-lighterror text-error"><Icon icon="solar:file-text-bold" width={23} /></span><span className="min-w-0"><span className="block truncate font-medium">{media.filename || 'WhatsApp belgesi'}</span><span className="block text-xs opacity-70">Belgeyi aç / indir</span></span></a>{caption ? <p className="mt-2 whitespace-pre-wrap break-words">{caption}</p> : null}</>;
+  return <p className="whitespace-pre-wrap break-words">{messageText(message)}</p>;
+}
+
+export default function MessageThread({ conversation, draftRecipient, messages, loading, sending, mediaAssets, mediaLoading, mediaSending, error, onSend, onSendMedia, onUploadMedia, onBack }: MessageThreadProps) {
   const [text, setText] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const recipient = conversation?.customerWaId || draftRecipient;
@@ -42,13 +63,13 @@ export default function MessageThread({ conversation, draftRecipient, messages, 
         {!loading && messages.length === 0 && <div className="flex h-full items-center justify-center text-center"><div><p className="text-sm font-medium">Henüz mesaj yok</p><p className="mt-1 text-xs text-muted-foreground">İlk mesajı aşağıdaki alandan gönderebilirsiniz.</p></div></div>}
         {messages.map((message) => {
           const outbound = message.direction === 'OUTBOUND';
-          return <div key={message.id} className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm shadow-sm sm:max-w-[70%] ${outbound ? 'rounded-br-md bg-primary text-white' : 'rounded-bl-md border border-border bg-card'}`}><p className="whitespace-pre-wrap break-words">{messageText(message)}</p><div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${outbound ? 'text-white/75' : 'text-muted-foreground'}`}><span>{messageTime(message.occurredAt)}</span>{outbound && <><Icon icon={message.status === 'READ' ? 'solar:check-read-linear' : 'solar:check-circle-linear'} /><span>{statusLabel(message.status)}</span></>}</div>{message.status === 'FAILED' && message.errorMessage && <p className="mt-2 border-t border-white/20 pt-2 text-xs">{message.errorMessage}</p>}</div></div>;
+          return <div key={message.id} className={`flex ${outbound ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[82%] rounded-2xl px-3 py-2.5 text-sm shadow-sm sm:max-w-[70%] ${outbound ? 'rounded-br-md bg-primary text-white' : 'rounded-bl-md border border-border bg-card'}`}><MediaContent message={message} /><div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${outbound ? 'text-white/75' : 'text-muted-foreground'}`}><span>{messageTime(message.occurredAt)}</span>{outbound && <><Icon icon={message.status === 'READ' ? 'solar:check-read-linear' : 'solar:check-circle-linear'} /><span>{statusLabel(message.status)}</span></>}</div>{message.status === 'FAILED' && message.errorMessage && <p className="mt-2 border-t border-white/20 pt-2 text-xs">{message.errorMessage}</p>}</div></div>;
         })}
         <div ref={endRef} />
       </div>
       <form onSubmit={submit} className="border-t border-border bg-card p-3 sm:p-4">
         {error && <p className="mb-2 rounded-md bg-lighterror px-3 py-2 text-xs text-error">{error}</p>}
-        <div className="flex items-end gap-2"><Textarea value={text} onChange={(event) => setText(event.target.value.slice(0, 4096))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="Mesajınızı yazın…" className="max-h-36 min-h-11 resize-none" /><Button type="submit" size="icon" className="h-11 w-11 shrink-0" disabled={!text.trim() || sending} aria-label="Mesaj gönder"><Icon icon={sending ? 'svg-spinners:ring-resize' : 'solar:plain-2-bold'} /></Button></div><div className="mt-1 flex justify-between px-1 text-[10px] text-muted-foreground"><span>Yeni satır için Shift + Enter</span><span>{text.length}/4096</span></div>
+        <div className="flex items-end gap-2"><MediaAttachmentDialog assets={mediaAssets} loading={mediaLoading} sending={mediaSending} error={error} onSendAsset={onSendMedia} onUploadAndSend={onUploadMedia} /><Textarea value={text} onChange={(event) => setText(event.target.value.slice(0, 4096))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} rows={1} placeholder="Mesajınızı yazın…" className="max-h-36 min-h-11 resize-none" /><Button type="submit" size="icon" className="h-11 w-11 shrink-0" disabled={!text.trim() || sending} aria-label="Mesaj gönder"><Icon icon={sending ? 'svg-spinners:ring-resize' : 'solar:plain-2-bold'} /></Button></div><div className="mt-1 flex justify-between px-1 text-[10px] text-muted-foreground"><span>Yeni satır için Shift + Enter</span><span>{text.length}/4096</span></div>
       </form>
     </section>
   );

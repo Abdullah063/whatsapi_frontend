@@ -73,3 +73,21 @@ export function sendTextMessage(accountId: string, recipientWaId: string, text: 
     body: jsonBody({ recipientWaId, text }),
   });
 }
+
+export interface SendMediaInput {
+  type: 'IMAGE' | 'DOCUMENT';
+  link: string;
+  caption?: string;
+  filename?: string;
+}
+
+export function sendMediaMessage(
+  accountId: string,
+  recipientWaId: string,
+  media: SendMediaInput,
+): Promise<Message> {
+  return apiRequest(`/api/v1/whatsapp/accounts/${accountId}/messages/media`, {
+    method: 'POST',
+    body: jsonBody({ recipientWaId, ...media }),
+  });
+}

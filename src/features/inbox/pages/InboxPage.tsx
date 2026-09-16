@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Button } from 'src/components/ui/button';
 import { listAccounts } from 'src/features/accounts/api/accounts-api';
+import { listMediaAssets, uploadMediaAsset, type MediaAsset } from 'src/features/media/api/media-assets-api';
 import { apiErrorMessage } from 'src/shared/api/error-message';
-import { listConversations, listRecentMessages, sendTextMessage, type Message } from '../api/messaging-api';
+import { listConversations, listRecentMessages, sendMediaMessage, sendTextMessage, type Message } from '../api/messaging-api';
 import ConversationList from '../ui/ConversationList';
 import MessageThread from '../ui/MessageThread';
 
@@ -38,22 +39,58 @@ export default function InboxPage() {
     refetchInterval: 3_000,
   });
 
+  const mediaAssets = useQuery({
+    queryKey: ['media-assets', accountId],
+    queryFn: () => listMediaAssets(accountId!),
+    enabled: Boolean(accountId),
+  });
+
+  async function messageQueued(message: Message) {
+    if (selectedConversation) {
+      queryClient.setQueryData<{ content: Message[]; page: number; size: number; totalElements: number }>(
+        ['whatsapp', 'messages', selectedConversation.id, 'recent'],
+        (current) => current && !current.content.some((item) => item.id === message.id)
+          ? { ...current, content: [...current.content, message], totalElements: current.totalElements + 1 }
+          : current,
+      );
+    }
+    await queryClient.invalidateQueries({ queryKey: ['whatsapp', 'conversations', accountId] });
+    setDraftRecipient(undefined);
+    setParams({ accountId: accountId!, conversationId: message.conversationId });
+    void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+  }
+
   const send = useMutation({
     mutationFn: (text: string) => sendTextMessage(accountId!, selectedConversation?.customerWaId || draftRecipient!, text),
-    onSuccess: async (message) => {
-      if (selectedConversation) {
-        queryClient.setQueryData<{ content: Message[]; page: number; size: number; totalElements: number }>(
-          ['whatsapp', 'messages', selectedConversation.id, 'recent'],
-          (current) => current && !current.content.some((item) => item.id === message.id)
-            ? { ...current, content: [...current.content, message], totalElements: current.totalElements + 1 }
-            : current,
-        );
-      }
-      await queryClient.invalidateQueries({ queryKey: ['whatsapp', 'conversations', accountId] });
-      setDraftRecipient(undefined);
-      setParams({ accountId: accountId!, conversationId: message.conversationId });
-      void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    onSuccess: messageQueued,
+  });
+
+  const sendMedia = useMutation({
+    mutationFn: ({ asset, caption }: { asset: MediaAsset; caption: string }) => sendMediaMessage(
+      accountId!,
+      selectedConversation?.customerWaId || draftRecipient!,
+      {
+        type: asset.mediaType,
+        link: asset.publicUrl,
+        caption: caption || undefined,
+        filename: asset.mediaType === 'DOCUMENT' ? asset.originalFilename : undefined,
+      },
+    ),
+    onSuccess: messageQueued,
+  });
+
+  const uploadAndSendMedia = useMutation({
+    mutationFn: async ({ file, name, caption }: { file: File; name: string; caption: string }) => {
+      const asset = await uploadMediaAsset(accountId!, file, name);
+      await queryClient.invalidateQueries({ queryKey: ['media-assets', accountId] });
+      return sendMediaMessage(accountId!, selectedConversation?.customerWaId || draftRecipient!, {
+        type: asset.mediaType,
+        link: asset.publicUrl,
+        caption: caption || undefined,
+        filename: asset.mediaType === 'DOCUMENT' ? asset.originalFilename : undefined,
+      });
     },
+    onSuccess: messageQueued,
   });
 
   function selectAccount(nextAccountId: string) {
@@ -83,7 +120,7 @@ export default function InboxPage() {
       {conversations.isError && <div className="rounded-md bg-lighterror p-3 text-sm text-error">{apiErrorMessage(conversations.error)}</div>}
       <div className="overflow-hidden rounded-xl border border-border shadow-sm lg:grid lg:grid-cols-[330px_minmax(0,1fr)]">
         <div className={hasThread ? 'hidden lg:block' : 'block'}><ConversationList conversations={conversations.data?.content || []} selectedId={selectedConversation?.id} loading={conversations.isPending} onSelect={(conversation) => { setDraftRecipient(undefined); setParams({ accountId: accountId!, conversationId: conversation.id }); }} onStartConversation={(recipient) => { setDraftRecipient(recipient); setParams({ accountId: accountId! }); }} /></div>
-        <div className={hasThread ? 'block' : 'hidden lg:block'}><MessageThread conversation={selectedConversation} draftRecipient={draftRecipient} messages={messages.data?.content || []} loading={messages.isPending && Boolean(selectedConversation)} sending={send.isPending} error={send.isError ? apiErrorMessage(send.error) : messages.isError ? apiErrorMessage(messages.error) : null} onBack={closeThread} onSend={async (text) => { try { await send.mutateAsync(text); return true; } catch { return false; } }} /></div>
+        <div className={hasThread ? 'block' : 'hidden lg:block'}><MessageThread conversation={selectedConversation} draftRecipient={draftRecipient} messages={messages.data?.content || []} loading={messages.isPending && Boolean(selectedConversation)} sending={send.isPending} mediaAssets={mediaAssets.data || []} mediaLoading={mediaAssets.isPending} mediaSending={sendMedia.isPending || uploadAndSendMedia.isPending} error={send.isError ? apiErrorMessage(send.error) : sendMedia.isError ? apiErrorMessage(sendMedia.error) : uploadAndSendMedia.isError ? apiErrorMessage(uploadAndSendMedia.error) : mediaAssets.isError ? apiErrorMessage(mediaAssets.error) : messages.isError ? apiErrorMessage(messages.error) : null} onBack={closeThread} onSend={async (text) => { try { await send.mutateAsync(text); return true; } catch { return false; } }} onSendMedia={async (asset, caption) => { try { await sendMedia.mutateAsync({ asset, caption }); return true; } catch { return false; } }} onUploadMedia={async (file, name, caption) => { try { await uploadAndSendMedia.mutateAsync({ file, name, caption }); return true; } catch { return false; } }} /></div>
       </div>
     </div>
   );

@@ -115,3 +115,7 @@ export async function apiRequest<T>(
 export function jsonBody(value: unknown): string {
   return JSON.stringify(value);
 }
+
+export function apiResourceUrl(path: string): string {
+  return `${baseUrl}${path}`;
+}
