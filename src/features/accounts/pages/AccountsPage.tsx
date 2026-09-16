@@ -9,7 +9,7 @@ import { Card, CardContent } from 'src/components/ui/card';
 import { Input } from 'src/components/ui/input';
 import { Label } from 'src/components/ui/label';
 import { apiErrorMessage } from 'src/shared/api/error-message';
-import { connectAccount, disconnectAccount, listAccounts } from '../api/accounts-api';
+import { connectAccount, disconnectAccount, listAccounts, updateAccountCredentials } from '../api/accounts-api';
 
 const schema = z.object({
   displayName: z.string().max(200).optional(),
@@ -24,6 +24,10 @@ export default function AccountsPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [credentialAccountId, setCredentialAccountId] = useState<string | null>(null);
+  const [newAccessToken, setNewAccessToken] = useState('');
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [credentialSuccess, setCredentialSuccess] = useState<string | null>(null);
   const accounts = useQuery({ queryKey: ['whatsapp', 'accounts'], queryFn: listAccounts });
   const form = useForm<FormValues>({ resolver: zodResolver(schema) });
   const connect = useMutation({
@@ -39,6 +43,17 @@ export default function AccountsPage() {
   const disconnect = useMutation({
     mutationFn: disconnectAccount,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['whatsapp', 'accounts'] }),
+  });
+  const updateCredentials = useMutation({
+    mutationFn: updateAccountCredentials,
+    onSuccess: async (account) => {
+      setNewAccessToken('');
+      setCredentialAccountId(null);
+      setCredentialError(null);
+      setCredentialSuccess(`${account.displayName || 'WhatsApp hesabı'} access tokenı güncellendi.`);
+      await queryClient.invalidateQueries({ queryKey: ['whatsapp', 'accounts'] });
+    },
+    onError: (error) => setCredentialError(apiErrorMessage(error)),
   });
 
   const onSubmit = form.handleSubmit((values) => {
@@ -69,7 +84,10 @@ export default function AccountsPage() {
       {accounts.isError && <Card><CardContent><p className="text-sm text-error">{apiErrorMessage(accounts.error)}</p><Button className="mt-4" variant="outline" onClick={() => accounts.refetch()}>Tekrar dene</Button></CardContent></Card>}
       {accounts.data?.length === 0 && <Card className="border-dashed"><CardContent className="py-8 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-lightprimary text-primary"><Icon icon="solar:smartphone-linear" width={28} /></div><h2 className="mt-4 text-lg font-semibold">Henüz hesap bağlı değil</h2><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Mesaj almaya ve göndermeye başlamak için ilk Meta Cloud API hesabınızı bağlayın.</p></CardContent></Card>}
       <div className="grid gap-5 lg:grid-cols-2">
-        {accounts.data?.map((account) => <Card key={account.id}><CardContent><div className="flex items-start justify-between gap-4"><div className="flex gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lightsuccess text-success"><Icon icon="logos:whatsapp-icon" width={24} /></div><div><h2 className="font-semibold">{account.displayName || 'WhatsApp hesabı'}</h2><p className="mt-1 text-xs text-muted-foreground">{account.externalPhoneNumberId}</p></div></div><span className={`rounded-full px-3 py-1 text-xs font-medium ${account.status === 'ACTIVE' ? 'bg-lightsuccess text-success' : 'bg-lighterror text-error'}`}>{account.status === 'ACTIVE' ? 'Aktif' : 'Kontrol gerekli'}</span></div><div className="mt-5 border-t border-border pt-4 text-sm"><p className="text-muted-foreground">Business Account ID</p><p className="mt-1 font-mono text-xs">{account.externalBusinessAccountId}</p></div><Button variant="outlineerror" className="mt-5" disabled={disconnect.isPending} onClick={() => { if (window.confirm('Bu WhatsApp hesabının bağlantısı kaldırılsın mı?')) disconnect.mutate(account.id); }}>Bağlantıyı kaldır</Button></CardContent></Card>)}
+        {accounts.data?.map((account) => <Card key={account.id}><CardContent><div className="flex items-start justify-between gap-4"><div className="flex gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lightsuccess text-success"><Icon icon="logos:whatsapp-icon" width={24} /></div><div><h2 className="font-semibold">{account.displayName || 'WhatsApp hesabı'}</h2><p className="mt-1 text-xs text-muted-foreground">{account.externalPhoneNumberId}</p></div></div><span className={`rounded-full px-3 py-1 text-xs font-medium ${account.status === 'ACTIVE' ? 'bg-lightsuccess text-success' : 'bg-lighterror text-error'}`}>{account.status === 'ACTIVE' ? 'Aktif' : 'Kontrol gerekli'}</span></div><div className="mt-5 border-t border-border pt-4 text-sm"><p className="text-muted-foreground">Business Account ID</p><p className="mt-1 font-mono text-xs">{account.externalBusinessAccountId}</p></div>
+          {credentialAccountId === account.id && <form className="mt-5 space-y-3 rounded-lg border border-border p-4" onSubmit={(event) => { event.preventDefault(); setCredentialError(null); setCredentialSuccess(null); updateCredentials.mutate({ accountId: account.id, accessToken: newAccessToken }); }}><div><Label htmlFor={`access-token-${account.id}`}>Yeni Meta access token</Label><Input id={`access-token-${account.id}`} type="password" className="mt-2" autoComplete="off" value={newAccessToken} onChange={(event) => setNewAccessToken(event.target.value)} required /><p className="mt-2 text-xs text-muted-foreground">Token yalnızca backend'e gönderilir ve şifreli saklanır.</p></div>{credentialError && <div className="rounded-md bg-lighterror p-3 text-sm text-error">{credentialError}</div>}<div className="flex gap-2"><Button size="sm" disabled={updateCredentials.isPending || !newAccessToken.trim()}>{updateCredentials.isPending ? 'Doğrulanıyor…' : 'Tokenı doğrula ve kaydet'}</Button><Button size="sm" type="button" variant="ghost" onClick={() => { setCredentialAccountId(null); setNewAccessToken(''); setCredentialError(null); }}>İptal</Button></div></form>}
+          {credentialSuccess && <div className="mt-4 rounded-md bg-lightsuccess p-3 text-sm text-success">{credentialSuccess}</div>}
+          <div className="mt-5 flex flex-wrap gap-2"><Button variant="outline" onClick={() => { setCredentialAccountId(account.id); setNewAccessToken(''); setCredentialError(null); setCredentialSuccess(null); }}>Access tokenı yenile</Button><Button variant="outlineerror" disabled={disconnect.isPending} onClick={() => { if (window.confirm('Bu WhatsApp hesabının bağlantısı kaldırılsın mı?')) disconnect.mutate(account.id); }}>Bağlantıyı kaldır</Button></div></CardContent></Card>)}
       </div>
     </div>
   );

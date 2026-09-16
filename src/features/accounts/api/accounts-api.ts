@@ -21,12 +21,29 @@ export interface ConnectAccountInput {
   webhookVerifyToken: string;
 }
 
+export interface UpdateAccountCredentialsInput {
+  accountId: string;
+  accessToken: string;
+  tokenExpiresAt?: string;
+}
+
 export function listAccounts(): Promise<WhatsAppAccount[]> {
   return apiRequest('/api/v1/whatsapp/accounts');
 }
 
 export function connectAccount(input: ConnectAccountInput): Promise<WhatsAppAccount> {
   return apiRequest('/api/v1/whatsapp/accounts', { method: 'POST', body: jsonBody(input) });
+}
+
+export function updateAccountCredentials({
+  accountId,
+  accessToken,
+  tokenExpiresAt,
+}: UpdateAccountCredentialsInput): Promise<WhatsAppAccount> {
+  return apiRequest(`/api/v1/whatsapp/accounts/${accountId}/credentials`, {
+    method: 'PUT',
+    body: jsonBody({ accessToken, tokenExpiresAt }),
+  });
 }
 
 export function disconnectAccount(accountId: string): Promise<void> {
