@@ -59,14 +59,24 @@ async function loadCsrfToken(): Promise<CsrfResponse> {
 async function toApiError(response: Response): Promise<ApiError> {
   let problem: ApiProblem = {};
   try {
-    problem = (await response.json()) as ApiProblem;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('json')) {
+      problem = (await response.json()) as ApiProblem;
+    } else {
+      const detail = await response.text();
+      problem = { title: response.statusText || 'Request failed', detail: detail || undefined };
+    }
   } catch {
     problem = { title: response.statusText || 'Request failed' };
   }
   return new ApiError(response.status, problem);
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  retryCsrf = true,
+): Promise<T> {
   const method = (init.method || 'GET').toUpperCase();
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
@@ -86,7 +96,18 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     credentials: 'include',
   });
 
-  if (!response.ok) throw await toApiError(response);
+  if (!response.ok) {
+    const error = await toApiError(response);
+    const shouldRefreshCsrf = retryCsrf
+      && stateChangingMethods.has(method)
+      && error.status === 403
+      && (!error.problem.code || error.problem.code === 'ACCESS_DENIED');
+    if (shouldRefreshCsrf) {
+      csrf = null;
+      return apiRequest<T>(path, init, false);
+    }
+    throw error;
+  }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
