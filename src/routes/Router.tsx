@@ -8,6 +8,7 @@ const FullLayout = Loadable(lazy(() => import('../layouts/full/FullLayout')));
 const BlankLayout = Loadable(lazy(() => import('../layouts/blank/BlankLayout')));
 const DashboardPage = Loadable(lazy(() => import('../features/dashboard/pages/DashboardPage')));
 const AccountsPage = Loadable(lazy(() => import('../features/accounts/pages/AccountsPage')));
+const InboxPage = Loadable(lazy(() => import('../features/inbox/pages/InboxPage')));
 const ProfilePage = Loadable(lazy(() => import('../features/profile/pages/ProfilePage')));
 const Login = Loadable(lazy(() => import('../views/authentication/auth2/Login')));
 const Register = Loadable(lazy(() => import('../views/authentication/auth2/Register')));
@@ -25,7 +26,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'whatsapp-accounts', element: <AccountsPage /> },
-          { path: 'inbox', element: <ModulePage eyebrow="Mesajlaşma" title="Gelen kutusu" description="WhatsApp konuşmalarını tek ekrandan yönetin ve hızlı yanıt verin." icon="solar:inbox-linear" capabilities={['Konuşma ve mesaj listesi', 'Metin, medya ve şablon mesaj gönderimi', 'Mesaj durumlarının canlı takibi', 'Hesap bazlı filtreleme']} /> },
+          { path: 'inbox', element: <InboxPage /> },
           { path: 'automations', element: <ModulePage eyebrow="Otomasyon" title="Otomatik cevaplar" description="Anahtar kelime, varsayılan yanıt, hızlı cevap ve harici webhook/AI aksiyonlarını yönetin." icon="solar:bolt-linear" capabilities={['Kural oluşturma ve önceliklendirme', 'Yanıt önizleme', 'Webhook ve AI aksiyonları', 'Aktif/pasif durum yönetimi']} /> },
           { path: 'contacts', element: <ModulePage eyebrow="Kitle" title="Kişiler ve gruplar" description="Kişileri gruplandırın, toplu içe aktarın ve kara liste süreçlerini yönetin." icon="solar:users-group-rounded-linear" capabilities={['Kişi grupları', 'CSV içe aktarma', 'Toplu kişi ekleme', 'Kara liste yönetimi']} /> },
           { path: 'templates', element: <ModulePage eyebrow="İçerik" title="Mesaj şablonları" description="Meta hesabınızdaki onaylı şablonları senkronize edin ve kampanyalarda kullanın." icon="solar:document-text-linear" capabilities={['Meta şablon senkronizasyonu', 'Dil ve durum filtreleri', 'Değişken önizleme', 'Kampanya seçimi']} /> },

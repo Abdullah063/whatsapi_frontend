@@ -54,7 +54,7 @@ src/
   components/     TailwindAdmin ve temel UI bileşenleri
 ```
 
-Auth ekranları, gerçek analytics dashboard'u ve Meta Cloud API hesap yönetimi çalışır durumdadır. Inbox, otomasyon, kişi, şablon, kampanya, detaylı analitik ve abonelik ekranları backend sözleşmeleri korunarak modül modül geliştirilmeye hazır rota iskeletlerine sahiptir.
+Auth ekranları, gerçek analytics dashboard'u, Meta Cloud API hesap yönetimi ve gelen kutusu çalışır durumdadır. Gelen kutusu hesap/konuşma seçimi, son mesaj geçmişi, yeni numarayla konuşma başlatma, metin gönderimi ve mesaj durumu yenilemesini destekler. Otomasyon, kişi, şablon, kampanya, detaylı analitik ve abonelik ekranları backend sözleşmeleri korunarak modül modül geliştirilmeye hazır rota iskeletlerine sahiptir.
 
 ## Container
 
