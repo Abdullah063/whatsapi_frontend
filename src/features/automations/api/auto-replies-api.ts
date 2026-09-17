@@ -66,7 +66,7 @@ export interface AutomationQueueSummary {
 
 export interface AutomationActivityItem {
   id: string;
-  ruleId: string;
+  ruleId: string | null;
   ruleName: string;
   responseType: ResponseType;
   conversationId: string;

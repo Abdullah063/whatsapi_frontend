@@ -15,6 +15,7 @@ import { Textarea } from 'src/components/ui/textarea';
 import { listAccounts } from 'src/features/accounts/api/accounts-api';
 import { type MediaAsset, listMediaAssets } from 'src/features/media/api/media-assets-api';
 import { apiErrorMessage } from 'src/shared/api/error-message';
+import { getAiAssistantSettings, updateAiAssistantSettings } from '../api/ai-assistant-api';
 import {
   type AutomationActivityState,
   type AutoReplyRule,
@@ -77,6 +78,12 @@ interface RuleFormState {
   allowedPhones: string;
   cooldownSeconds: string;
   dailyLimit: string;
+}
+
+interface AiAssistantFormState {
+  enabled: boolean;
+  systemPrompt: string;
+  fallbackReply: string;
 }
 
 const emptyForm: RuleFormState = {
@@ -169,6 +176,13 @@ export default function AutomationsPage() {
   const accounts = useQuery({ queryKey: ['whatsapp', 'accounts'], queryFn: listAccounts });
   const [accountId, setAccountId] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiForm, setAiForm] = useState<AiAssistantFormState>({
+    enabled: false,
+    systemPrompt: defaultAiPrompt,
+    fallbackReply: 'Şu anda otomatik cevap oluşturamıyorum. Ekibimiz kısa süre içinde yardımcı olacak.',
+  });
+  const [aiFormError, setAiFormError] = useState<string | null>(null);
   const [editingRule, setEditingRule] = useState<AutoReplyRule | null>(null);
   const [form, setForm] = useState<RuleFormState>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
@@ -189,6 +203,11 @@ export default function AutomationsPage() {
     queryFn: () => getAutomationActivity(accountId),
     enabled: Boolean(accountId),
     refetchInterval: 10_000,
+  });
+  const assistant = useQuery({
+    queryKey: ['ai-assistant', accountId],
+    queryFn: () => getAiAssistantSettings(accountId),
+    enabled: Boolean(accountId),
   });
   const mediaAssets = useQuery({
     queryKey: ['media-assets', accountId],
@@ -225,6 +244,28 @@ export default function AutomationsPage() {
   const preview = useMutation({
     mutationFn: () => previewAutoReply(accountId, previewMessage.trim(), previewPhone.trim()),
   });
+  const saveAssistant = useMutation({
+    mutationFn: (input: AiAssistantFormState) => updateAiAssistantSettings(accountId, input),
+    onSuccess: async (value) => {
+      queryClient.setQueryData(['ai-assistant', accountId], value);
+      setAiForm({ enabled: value.enabled, systemPrompt: value.systemPrompt, fallbackReply: value.fallbackReply });
+      setAiDialogOpen(false);
+      setAiFormError(null);
+      await queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+    onError: (error) => setAiFormError(apiErrorMessage(error)),
+  });
+  const toggleAssistant = useMutation({
+    mutationFn: (enabled: boolean) => {
+      const current = assistant.data;
+      return updateAiAssistantSettings(accountId, {
+        enabled,
+        systemPrompt: current?.systemPrompt || defaultAiPrompt,
+        fallbackReply: current?.fallbackReply || 'Şu anda otomatik cevap oluşturamıyorum. Ekibimiz kısa süre içinde yardımcı olacak.',
+      });
+    },
+    onSuccess: (value) => queryClient.setQueryData(['ai-assistant', accountId], value),
+  });
 
   const summary = useMemo(() => {
     const list = rules.data || [];
@@ -241,9 +282,6 @@ export default function AutomationsPage() {
   const previewAsset = preview.data?.rule?.mediaAssetId
     ? mediaById.get(preview.data.rule.mediaAssetId)
     : undefined;
-  const primaryAiRule = rules.data?.find(
-    (rule) => rule.responseType === 'AI' && rule.matchType === 'ALL',
-  );
 
   const openCreate = () => {
     setEditingRule(null);
@@ -260,23 +298,14 @@ export default function AutomationsPage() {
   };
 
   const openAiAssistant = () => {
-    if (primaryAiRule) {
-      openEdit(primaryAiRule);
-      return;
-    }
-    setEditingRule(null);
-    setForm({
-      ...emptyForm,
-      name: 'AI müşteri asistanı',
-      matchType: 'ALL',
-      responseType: 'AI',
-      replyText: 'Şu anda otomatik cevap oluşturamıyorum. Ekibimiz kısa süre içinde yardımcı olacak.',
-      priority: '9000',
-      cooldownSeconds: '0',
-      dailyLimit: '1000',
+    setAiForm({
+      enabled: assistant.data?.enabled ?? false,
+      systemPrompt: assistant.data?.systemPrompt || defaultAiPrompt,
+      fallbackReply: assistant.data?.fallbackReply
+        || 'Şu anda otomatik cevap oluşturamıyorum. Ekibimiz kısa süre içinde yardımcı olacak.',
     });
-    setFormError(null);
-    setDialogOpen(true);
+    setAiFormError(null);
+    setAiDialogOpen(true);
   };
 
   const submit = () => {
@@ -316,10 +345,18 @@ export default function AutomationsPage() {
           <div className="absolute inset-y-0 right-0 hidden w-72 bg-[radial-gradient(circle_at_center,rgba(93,135,255,0.13),transparent_68%)] lg:block" />
           <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
             <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/20"><Icon icon="solar:bolt-bold" width={25} /></div><div><p className="text-sm font-medium text-primary">Mesaj akışları</p><h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">Otomatik cevaplar</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Gelen mesajı eşleştir, doğru cevabı üret ve WhatsApp üzerinden otomatik gönder.</p></div></div>
-            <div className="flex flex-col gap-3 sm:flex-row"><Select value={accountId} onValueChange={setAccountId}><SelectTrigger className="h-10 min-w-56 bg-background"><SelectValue placeholder="WhatsApp hesabı seç" /></SelectTrigger><SelectContent>{accounts.data.map((account) => <SelectItem key={account.id} value={account.id}>{account.displayName || account.externalPhoneNumberId}</SelectItem>)}</SelectContent></Select><Button variant="secondary" onClick={openAiAssistant}><Icon icon="solar:magic-stick-3-linear" />{primaryAiRule ? 'AI ayarları' : 'AI asistanını aç'}</Button><Button onClick={openCreate}><Icon icon="solar:add-circle-linear" />Yeni kural</Button></div>
+            <div className="flex flex-col gap-3 sm:flex-row"><Select value={accountId} onValueChange={setAccountId}><SelectTrigger className="h-10 min-w-56 bg-background"><SelectValue placeholder="WhatsApp hesabı seç" /></SelectTrigger><SelectContent>{accounts.data.map((account) => <SelectItem key={account.id} value={account.id}>{account.displayName || account.externalPhoneNumberId}</SelectItem>)}</SelectContent></Select><Button variant="secondary" onClick={openAiAssistant}><Icon icon="solar:magic-stick-3-linear" />AI ayarları</Button><Button onClick={openCreate}><Icon icon="solar:add-circle-linear" />Yeni kural</Button></div>
           </div>
         </div>
       </section>
+
+      <Card className={`gap-0 overflow-hidden p-0 shadow-sm ${assistant.data?.enabled ? 'border-secondary/40' : 'border-border'}`}>
+        <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${assistant.data?.enabled ? 'bg-secondary text-white' : 'bg-muted text-muted-foreground'}`}><Icon icon="solar:magic-stick-3-linear" width={25} /></div>
+          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">AI asistanı</h2><Badge variant={assistant.data?.enabled ? 'lightSuccess' : 'gray'}>{assistant.data?.enabled ? 'Açık' : 'Kapalı'}</Badge></div><p className="mt-1.5 text-sm text-muted-foreground">Hiçbir otomatik cevap kuralı eşleşmezse Groq yanıt üretir. Son {assistant.data?.contextMessageLimit || 10} metin mesajını konuşma bağlamı olarak kullanır.</p>{toggleAssistant.isError && <p className="mt-2 text-xs text-error">{apiErrorMessage(toggleAssistant.error)}</p>}</div>
+          <div className="flex items-center gap-3"><Button variant="outline" size="sm" onClick={openAiAssistant}>Prompt ve ayarlar</Button><Switch aria-label="AI asistanını aç veya kapat" checked={assistant.data?.enabled ?? false} disabled={assistant.isPending || toggleAssistant.isPending} onCheckedChange={(enabled) => toggleAssistant.mutate(enabled)} /></div>
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 sm:grid-cols-3">
         {[
@@ -395,16 +432,28 @@ export default function AutomationsPage() {
         </CardContent></Card>}
       </section>
 
+      <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
+        <DialogContent className="max-w-2xl p-0">
+          <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle>AI asistanı ayarları</DialogTitle><DialogDescription className="font-normal text-muted-foreground">Otomatik cevap kurallarından hiçbiri çalışmadığında kullanılacak yapay zekayı yönetin.</DialogDescription></DialogHeader>
+          <div className="space-y-5 px-6 py-2">
+            <div className="flex items-center justify-between rounded-xl border border-border p-4"><div><p className="text-sm font-medium">AI asistanı aktif</p><p className="mt-1 text-xs text-muted-foreground">Açıldığında yalnızca eşleşmeyen mesajlara cevap verir.</p></div><Switch checked={aiForm.enabled} onCheckedChange={(enabled) => setAiForm({ ...aiForm, enabled })} /></div>
+            <div><div className="flex items-center justify-between"><Label htmlFor="assistant-system-prompt">Davranış talimatı (system prompt)</Label><span className="text-xs text-muted-foreground">{aiForm.systemPrompt.length}/8000</span></div><Textarea id="assistant-system-prompt" className="mt-2 min-h-44" maxLength={8000} value={aiForm.systemPrompt} onChange={(event) => setAiForm({ ...aiForm, systemPrompt: event.target.value })} placeholder="Örn. Deneyimli bir satış danışmanı gibi davran. Türkçe, kısa ve samimi cevap ver…" /><p className="mt-1.5 text-xs text-muted-foreground">Asistanın rolünü, üslubunu ve sınırlarını belirleyin. Son {assistant.data?.contextMessageLimit || 10} metin mesajı otomatik olarak bağlama eklenir.</p></div>
+            <div><div className="flex items-center justify-between"><Label htmlFor="assistant-fallback">AI çalışmazsa gönderilecek cevap</Label><span className="text-xs text-muted-foreground">{aiForm.fallbackReply.length}/4096</span></div><Textarea id="assistant-fallback" className="mt-2 min-h-24" maxLength={4096} value={aiForm.fallbackReply} onChange={(event) => setAiForm({ ...aiForm, fallbackReply: event.target.value })} /></div>
+            {aiFormError && <div className="rounded-lg bg-lighterror p-3 text-sm text-error">{aiFormError}</div>}
+          </div>
+          <DialogFooter className="border-t border-border px-6 py-4"><Button variant="ghost" onClick={() => setAiDialogOpen(false)}>İptal</Button><Button variant="secondary" disabled={saveAssistant.isPending || !aiForm.systemPrompt.trim() || !aiForm.fallbackReply.trim()} onClick={() => saveAssistant.mutate({ ...aiForm, systemPrompt: aiForm.systemPrompt.trim(), fallbackReply: aiForm.fallbackReply.trim() })}>{saveAssistant.isPending ? 'Kaydediliyor…' : 'AI ayarlarını kaydet'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto p-0">
           <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle>{editingRule ? 'Kuralı düzenle' : 'Yeni otomatik cevap'}</DialogTitle><DialogDescription className="font-normal text-muted-foreground">Mesajın ne zaman eşleşeceğini ve gönderilecek cevabı belirleyin.</DialogDescription></DialogHeader>
           <div className="grid gap-6 px-6 py-2 md:grid-cols-2">
             <div className="md:col-span-2"><Label htmlFor="rule-name">Kural adı</Label><Input id="rule-name" className="mt-2" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Karşılama mesajı" /></div>
-            <div className="md:col-span-2"><Label>Cevap türü</Label><div className="mt-2 grid gap-3 sm:grid-cols-3"><button type="button" onClick={() => setForm({ ...form, responseType: 'STATIC_TEXT' })} className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${form.responseType === 'STATIC_TEXT' ? 'border-primary bg-lightprimary' : 'border-border hover:border-primary/50'}`}><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${form.responseType === 'STATIC_TEXT' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}><Icon icon="solar:chat-round-line-linear" width={19} /></span><span><span className="block text-sm font-semibold">Sabit cevap</span><span className="mt-1 block text-xs text-muted-foreground">Hazır metni gönderir.</span></span></button><button type="button" onClick={() => setForm({ ...form, responseType: 'AI', matchType: form.matchType, priority: form.priority === '100' ? '9000' : form.priority })} className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${form.responseType === 'AI' ? 'border-secondary bg-lightsecondary' : 'border-border hover:border-secondary/50'}`}><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${form.responseType === 'AI' ? 'bg-secondary text-white' : 'bg-muted text-muted-foreground'}`}><Icon icon="solar:magic-stick-3-linear" width={19} /></span><span><span className="block text-sm font-semibold">Groq AI</span><span className="mt-1 block text-xs text-muted-foreground">Dinamik cevap üretir.</span></span></button><button type="button" onClick={() => setForm({ ...form, responseType: 'MEDIA' })} className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${form.responseType === 'MEDIA' ? 'border-warning bg-lightwarning' : 'border-border hover:border-warning/50'}`}><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${form.responseType === 'MEDIA' ? 'bg-warning text-white' : 'bg-muted text-muted-foreground'}`}><Icon icon="solar:gallery-wide-linear" width={19} /></span><span><span className="block text-sm font-semibold">Galeri medyası</span><span className="mt-1 block text-xs text-muted-foreground">Görsel veya PDF gönderir.</span></span></button></div></div>
+            <div className="md:col-span-2"><Label>Cevap türü</Label><div className="mt-2 grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setForm({ ...form, responseType: 'STATIC_TEXT' })} className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${form.responseType === 'STATIC_TEXT' ? 'border-primary bg-lightprimary' : 'border-border hover:border-primary/50'}`}><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${form.responseType === 'STATIC_TEXT' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}><Icon icon="solar:chat-round-line-linear" width={19} /></span><span><span className="block text-sm font-semibold">Sabit cevap</span><span className="mt-1 block text-xs text-muted-foreground">Hazır metni gönderir.</span></span></button><button type="button" onClick={() => setForm({ ...form, responseType: 'MEDIA' })} className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${form.responseType === 'MEDIA' ? 'border-warning bg-lightwarning' : 'border-border hover:border-warning/50'}`}><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${form.responseType === 'MEDIA' ? 'bg-warning text-white' : 'bg-muted text-muted-foreground'}`}><Icon icon="solar:gallery-wide-linear" width={19} /></span><span><span className="block text-sm font-semibold">Galeri medyası</span><span className="mt-1 block text-xs text-muted-foreground">Görsel veya PDF gönderir.</span></span></button></div><p className="mt-2 text-xs text-muted-foreground">AI, kural olarak değil; yukarıdaki AI asistanı bölümünden eşleşmeyen mesajlar için yönetilir.</p></div>
             <div><Label>Eşleşme şekli</Label><Select value={form.matchType} onValueChange={(value: MatchType) => setForm({ ...form, matchType: value })}><SelectTrigger className="mt-2 w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(matchLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
             <div><Label htmlFor="rule-priority">Öncelik</Label><Input id="rule-priority" type="number" min={1} max={9999} className="mt-2" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} /><p className="mt-1.5 text-xs text-muted-foreground">Küçük sayı önce değerlendirilir.</p></div>
             {form.matchType !== 'ALL' && <div className="md:col-span-2"><Label htmlFor="rule-keywords">Anahtar kelimeler</Label><Input id="rule-keywords" className="mt-2" value={form.keywords} onChange={(event) => setForm({ ...form, keywords: event.target.value })} placeholder="merhaba, selam, iyi günler" /><p className="mt-1.5 text-xs text-muted-foreground">Birden fazla değeri virgülle ayırın.</p></div>}
-            {form.responseType === 'AI' && <div className="md:col-span-2"><div className="flex items-center justify-between"><Label htmlFor="ai-system-prompt">AI davranış talimatı (system prompt)</Label><span className="text-xs text-muted-foreground">{form.aiSystemPrompt.length}/8000</span></div><Textarea id="ai-system-prompt" className="min-h-36" maxLength={8000} value={form.aiSystemPrompt} onChange={(event) => setForm({ ...form, aiSystemPrompt: event.target.value })} placeholder="Örn. Deneyimli bir satış danışmanı gibi davran. Kısa ve Türkçe cevap ver…" /><p className="mt-1.5 text-xs text-muted-foreground">Buraya “şöyle davran” talimatını yazabilirsiniz. Konuşmanın son 10 metin mesajı otomatik olarak bağlama eklenir; API anahtarını buraya yazmayın.</p></div>}
             {form.responseType === 'MEDIA' && <div className="md:col-span-2"><div className="flex items-center justify-between gap-3"><div><Label>Galeriden dosya seç</Label><p className="mt-1 text-xs text-muted-foreground">Aynı dosyayı farklı otomasyonlarda tekrar kullanabilirsiniz.</p></div><Button asChild size="sm" variant="outline"><Link to="/media-library"><Icon icon="solar:gallery-add-linear" />Galeriyi yönet</Link></Button></div>{mediaAssets.isPending && <div className="mt-3 h-24 animate-pulse rounded-xl bg-muted" />}{mediaAssets.data?.length === 0 && <div className="mt-3 rounded-xl border border-dashed border-warning/40 bg-lightwarning p-4 text-sm text-warning">Galeride dosya yok. Önce medya galerisine bir görsel veya PDF yükleyin.</div>}<div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{mediaAssets.data?.map((asset) => { const selected = form.mediaAssetId === asset.id; return <button key={asset.id} type="button" onClick={() => setForm({ ...form, mediaAssetId: asset.id })} className={`overflow-hidden rounded-xl border p-2 text-left transition-all ${selected ? 'border-warning bg-lightwarning ring-2 ring-warning/20' : 'border-border hover:border-warning/50'}`}><MediaAssetPreview asset={asset} /><span className="mt-2 block truncate px-1 text-xs font-semibold">{asset.name}</span><span className="block truncate px-1 pb-1 text-[11px] text-muted-foreground">{asset.originalFilename}</span></button>; })}</div></div>}
             <div className="md:col-span-2"><div className="flex items-center justify-between"><Label htmlFor="rule-reply">{form.responseType === 'AI' ? 'AI çalışmazsa gönderilecek cevap' : form.responseType === 'MEDIA' ? 'Medya açıklaması (isteğe bağlı)' : 'Cevap metni'}</Label><span className="text-xs text-muted-foreground">{form.replyText.length}/{form.responseType === 'MEDIA' ? 1024 : 4096}</span></div><Textarea id="rule-reply" className="min-h-28" maxLength={form.responseType === 'MEDIA' ? 1024 : 4096} value={form.replyText} onChange={(event) => setForm({ ...form, replyText: event.target.value })} placeholder={form.responseType === 'AI' ? 'Şu anda otomatik yanıt oluşturamıyorum. Ekibimiz kısa süre içinde yardımcı olacak.' : form.responseType === 'MEDIA' ? 'Güncel fiyat listemiz ektedir.' : 'Merhaba, size nasıl yardımcı olabiliriz?'} />{form.responseType !== 'AI' && <div className="mt-2 flex flex-wrap gap-1.5">{['{telefon}', '{mesaj}', '{tarih}', '{saat}', '{gun}'].map((token) => <button key={token} type="button" className="rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground hover:text-primary" onClick={() => setForm({ ...form, replyText: `${form.replyText}${form.replyText ? ' ' : ''}${token}` })}>{token}</button>)}</div>}</div>
             <div><Label htmlFor="rule-cooldown">Bekleme süresi (saniye)</Label><Input id="rule-cooldown" type="number" min={0} max={86400} className="mt-2" value={form.cooldownSeconds} onChange={(event) => setForm({ ...form, cooldownSeconds: event.target.value })} /></div>
