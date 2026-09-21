@@ -13,6 +13,11 @@ interface MessageThreadProps {
   draftRecipient?: string;
   messages: Message[];
   loading: boolean;
+  messagePage: number;
+  messagePageSize: number;
+  messageTotal: number;
+  onOlderMessages: () => void;
+  onNewerMessages: () => void;
   sending: boolean;
   mediaAssets: MediaAsset[];
   mediaLoading: boolean;
@@ -39,7 +44,7 @@ function MediaContent({ message }: { message: Message }) {
   return <p className="whitespace-pre-wrap break-words">{messageText(message)}</p>;
 }
 
-export default function MessageThread({ conversation, draftRecipient, messages, loading, sending, mediaAssets, mediaLoading, mediaSending, togglingAutomation, error, onSend, onSendMedia, onUploadMedia, onToggleAutomation, onBack }: MessageThreadProps) {
+export default function MessageThread({ conversation, draftRecipient, messages, loading, messagePage, messagePageSize, messageTotal, onOlderMessages, onNewerMessages, sending, mediaAssets, mediaLoading, mediaSending, togglingAutomation, error, onSend, onSendMedia, onUploadMedia, onToggleAutomation, onBack }: MessageThreadProps) {
   const [text, setText] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const recipient = conversation?.customerWaId || draftRecipient;
@@ -62,6 +67,7 @@ export default function MessageThread({ conversation, draftRecipient, messages, 
       <header className="flex min-h-[77px] items-center gap-3 border-b border-border bg-card px-4 py-3"><Button variant="ghost" size="icon" className="lg:hidden" onClick={onBack}><Icon icon="solar:arrow-left-linear" /></Button><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-lightprimary font-semibold text-primary">{contactLabel(conversation?.customerName || null, recipient).slice(0, 1).toLocaleUpperCase('tr-TR')}</span><div className="min-w-0"><h2 className="truncate text-sm font-semibold">{conversation ? contactLabel(conversation.customerName, recipient) : formatPhone(recipient)}</h2><p className="truncate text-xs text-muted-foreground">{formatPhone(recipient)}</p></div>{conversation ? <Button type="button" size="sm" variant={conversation.automationEnabled ? 'lightsecondary' : 'lightwarning'} className="ml-auto shrink-0" disabled={togglingAutomation} title={conversation.automationEnabled ? 'Otomatik cevapları durdur' : 'Otomatik cevapları yeniden aç'} aria-label={conversation.automationEnabled ? 'Otomatik cevapları durdur' : 'Otomatik cevapları yeniden aç'} onClick={() => onToggleAutomation(!conversation.automationEnabled)}><Icon icon={togglingAutomation ? 'svg-spinners:ring-resize' : conversation.automationEnabled ? 'solar:magic-stick-3-linear' : 'solar:user-hand-up-linear'} />{conversation.automationEnabled ? 'AI açık' : 'İnsan devraldı'}</Button> : null}</header>
       {conversation && !conversation.automationEnabled ? <div className="flex items-center gap-2 border-b border-warning/20 bg-lightwarning px-4 py-2 text-xs text-warning"><Icon icon="solar:shield-user-linear" width={17} /><span><strong>İnsan kontrolü aktif.</strong> Bu konuşmada otomatik ve AI cevapları durduruldu.</span></div> : null}
       <div className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-6">
+        {conversation && messageTotal > messagePageSize && <div className="sticky top-0 z-10 flex items-center justify-center gap-2"><Button type="button" size="sm" variant="outline" className="bg-card/95 shadow-sm" disabled={messagePage === 0 || loading} onClick={onOlderMessages}><Icon icon="solar:alt-arrow-up-linear" />Daha eski</Button><span className="rounded-md bg-card/95 px-2 py-1 text-[10px] text-muted-foreground shadow-sm">{messagePage + 1}/{Math.max(1, Math.ceil(messageTotal / messagePageSize))}</span><Button type="button" size="sm" variant="outline" className="bg-card/95 shadow-sm" disabled={(messagePage + 1) * messagePageSize >= messageTotal || loading} onClick={onNewerMessages}>Daha yeni<Icon icon="solar:alt-arrow-down-linear" /></Button></div>}
         {loading && <div className="flex h-full items-center justify-center"><Icon icon="svg-spinners:ring-resize" className="text-primary" width={28} /></div>}
         {!loading && messages.length === 0 && <div className="flex h-full items-center justify-center text-center"><div><p className="text-sm font-medium">Henüz mesaj yok</p><p className="mt-1 text-xs text-muted-foreground">İlk mesajı aşağıdaki alandan gönderebilirsiniz.</p></div></div>}
         {messages.map((message) => {

@@ -1,6 +1,6 @@
 import { Icon } from '@iconify/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { Button } from 'src/components/ui/button';
 import { Card, CardContent } from 'src/components/ui/card';
 import { Input } from 'src/components/ui/input';
@@ -8,7 +8,9 @@ import { Label } from 'src/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from 'src/components/ui/select';
 import { listAccounts } from 'src/features/accounts/api/accounts-api';
 import { apiErrorMessage } from 'src/shared/api/error-message';
-import { deleteMediaAsset, listMediaAssets, uploadMediaAsset } from '../api/media-assets-api';
+import { deleteMediaAsset, listMediaAssets, uploadMediaAsset, type MediaAssetType } from '../api/media-assets-api';
+
+const PAGE_SIZE = 24;
 
 const bytes = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
 
@@ -30,14 +32,23 @@ export default function MediaLibraryPage() {
   const [name, setName] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const [type, setType] = useState<'ALL' | MediaAssetType>('ALL');
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     if (!accountId && accounts.data?.length) setAccountId(accounts.data[0].id);
   }, [accountId, accounts.data]);
 
   const assets = useQuery({
-    queryKey: ['media-assets', accountId],
-    queryFn: () => listMediaAssets(accountId),
+    queryKey: ['media-assets', accountId, deferredSearch, type, page],
+    queryFn: () => listMediaAssets(accountId, {
+      search: deferredSearch,
+      type: type === 'ALL' ? undefined : type,
+      page,
+      size: PAGE_SIZE,
+    }),
     enabled: Boolean(accountId),
   });
   const upload = useMutation({
@@ -60,15 +71,12 @@ export default function MediaLibraryPage() {
     onError: (error) => setFormError(apiErrorMessage(error)),
   });
 
-  const summary = useMemo(() => {
-    const list = assets.data || [];
-    return {
-      total: list.length,
-      images: list.filter((asset) => asset.mediaType === 'IMAGE').length,
-      documents: list.filter((asset) => asset.mediaType === 'DOCUMENT').length,
-      size: list.reduce((sum, asset) => sum + asset.sizeBytes, 0),
-    };
-  }, [assets.data]);
+  const summary = {
+    total: (assets.data?.imageCount || 0) + (assets.data?.documentCount || 0),
+    images: assets.data?.imageCount || 0,
+    documents: assets.data?.documentCount || 0,
+    size: assets.data?.totalBytes || 0,
+  };
 
   const submit = () => {
     if (!file) {
@@ -85,7 +93,7 @@ export default function MediaLibraryPage() {
   return <div className="space-y-6">
     <section className="flex flex-col justify-between gap-5 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-center">
       <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-secondary text-white shadow-lg shadow-secondary/20"><Icon icon="solar:gallery-wide-linear" width={25} /></div><div><p className="text-sm font-medium text-secondary">İçerik arşivi</p><h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">Medya galerisi</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Görsel ve PDF dosyalarını bir kez yükleyip otomatik cevaplarda tekrar kullanın.</p></div></div>
-      {accounts.data?.length ? <Select value={accountId} onValueChange={setAccountId}><SelectTrigger className="h-10 min-w-56 bg-background"><SelectValue /></SelectTrigger><SelectContent>{accounts.data.map((account) => <SelectItem key={account.id} value={account.id}>{account.displayName || account.externalPhoneNumberId}</SelectItem>)}</SelectContent></Select> : null}
+      {accounts.data?.length ? <Select value={accountId} onValueChange={(value) => { setAccountId(value); setPage(0); }}><SelectTrigger className="h-10 min-w-56 bg-background"><SelectValue /></SelectTrigger><SelectContent>{accounts.data.map((account) => <SelectItem key={account.id} value={account.id}>{account.displayName || account.externalPhoneNumberId}</SelectItem>)}</SelectContent></Select> : null}
     </section>
 
     {!accounts.data?.length ? <Card className="border-dashed"><CardContent className="py-10 text-center"><Icon icon="solar:smartphone-linear" width={28} className="mx-auto text-muted-foreground" /><h2 className="mt-4 font-semibold">Önce WhatsApp hesabı bağlayın</h2></CardContent></Card> : <>
@@ -100,12 +108,15 @@ export default function MediaLibraryPage() {
 
       <Card className="gap-0 shadow-sm"><CardContent className="grid gap-5 p-5 md:grid-cols-[1fr_1fr_auto] md:items-end"><div><Label htmlFor="media-name">Galeride görünen ad</Label><Input id="media-name" className="mt-2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Eylül fiyat listesi" /></div><div><Label htmlFor="media-file">Dosya</Label><Input ref={fileInput} id="media-file" type="file" className="mt-2" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(event) => setFile(event.target.files?.[0] || null)} /></div><Button disabled={!file || upload.isPending} onClick={submit}><Icon icon="solar:upload-linear" />{upload.isPending ? 'Yükleniyor…' : 'Galeriye yükle'}</Button>{formError && <div className="rounded-lg bg-lighterror p-3 text-sm text-error md:col-span-3">{formError}</div>}<p className="text-xs text-muted-foreground md:col-span-3">PNG, JPEG, WebP veya PDF · En fazla 10 MB</p></CardContent></Card>
 
+      <Card className="gap-0 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row"><div className="relative flex-1"><Icon icon="solar:magnifer-linear" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} className="pl-9" placeholder="Dosya adıyla ara…" /></div><Select value={type} onValueChange={(value: 'ALL' | MediaAssetType) => { setType(value); setPage(0); }}><SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">Tüm dosyalar</SelectItem><SelectItem value="IMAGE">Görseller</SelectItem><SelectItem value="DOCUMENT">Belgeler</SelectItem></SelectContent></Select></CardContent></Card>
+
       {assets.isPending && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="h-64 animate-pulse rounded-2xl bg-muted" />)}</div>}
       {assets.isError && <Card><CardContent><p className="text-sm text-error">{apiErrorMessage(assets.error)}</p></CardContent></Card>}
-      {assets.data?.length === 0 && <Card className="border-dashed"><CardContent className="py-10 text-center"><Icon icon="solar:gallery-add-linear" width={30} className="mx-auto text-muted-foreground" /><h2 className="mt-4 font-semibold">Galeri boş</h2><p className="mt-1 text-sm text-muted-foreground">İlk fiyat listesi veya kataloğunuzu yukarıdan yükleyin.</p></CardContent></Card>}
+      {assets.data?.content.length === 0 && <Card className="border-dashed"><CardContent className="py-10 text-center"><Icon icon="solar:gallery-add-linear" width={30} className="mx-auto text-muted-foreground" /><h2 className="mt-4 font-semibold">Dosya bulunamadı</h2><p className="mt-1 text-sm text-muted-foreground">Filtreyi temizleyin veya ilk dosyanızı yukarıdan yükleyin.</p></CardContent></Card>}
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {assets.data?.map((asset) => <Card key={asset.id} className="gap-0 overflow-hidden p-0 shadow-sm"><CardContent>{asset.mediaType === 'IMAGE' ? <div className="flex h-52 items-center justify-center bg-muted/50"><img src={asset.publicUrl} alt={asset.name} className="h-full w-full object-contain" /></div> : <div className="flex h-52 flex-col items-center justify-center bg-lighterror text-error"><Icon icon="solar:file-text-bold" width={48} /><span className="mt-2 text-sm font-semibold">PDF belge</span></div>}<div className="p-5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate font-semibold">{asset.name}</h2><p className="mt-1 truncate text-xs text-muted-foreground">{asset.originalFilename}</p></div><Button size="icon" variant="ghosterror" disabled={remove.isPending} aria-label="Medyayı sil" onClick={() => { if (window.confirm(`“${asset.name}” galeriden silinsin mi?`)) remove.mutate(asset.id); }}><Icon icon="solar:trash-bin-trash-linear" /></Button></div><div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground"><span>{formatSize(asset.sizeBytes)}</span><span>{formatDate(asset.createdAt)}</span></div></div></CardContent></Card>)}
+        {assets.data?.content.map((asset) => <Card key={asset.id} className="gap-0 overflow-hidden p-0 shadow-sm"><CardContent>{asset.mediaType === 'IMAGE' ? <div className="flex h-52 items-center justify-center bg-muted/50"><img src={asset.publicUrl} alt={asset.name} className="h-full w-full object-contain" /></div> : <div className="flex h-52 flex-col items-center justify-center bg-lighterror text-error"><Icon icon="solar:file-text-bold" width={48} /><span className="mt-2 text-sm font-semibold">PDF belge</span></div>}<div className="p-5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate font-semibold">{asset.name}</h2><p className="mt-1 truncate text-xs text-muted-foreground">{asset.originalFilename}</p></div><Button size="icon" variant="ghosterror" disabled={remove.isPending} aria-label="Medyayı sil" onClick={() => { if (window.confirm(`“${asset.name}” galeriden silinsin mi?`)) remove.mutate(asset.id); }}><Icon icon="solar:trash-bin-trash-linear" /></Button></div><div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground"><span>{formatSize(asset.sizeBytes)}</span><span>{formatDate(asset.createdAt)}</span></div></div></CardContent></Card>)}
       </section>
+      {assets.data && assets.data.totalElements > 0 && <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Toplam {assets.data.totalElements.toLocaleString('tr-TR')} kayıt · Sayfa {assets.data.page + 1}/{Math.max(1, Math.ceil(assets.data.totalElements / PAGE_SIZE))}</p><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page === 0 || assets.isFetching} onClick={() => setPage((value) => value - 1)}><Icon icon="solar:alt-arrow-left-linear" />Önceki</Button><Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= assets.data.totalElements || assets.isFetching} onClick={() => setPage((value) => value + 1)}>Sonraki<Icon icon="solar:alt-arrow-right-linear" /></Button></div></div>}
     </>}
   </div>;
 }

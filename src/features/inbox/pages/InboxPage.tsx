@@ -1,19 +1,24 @@
 import { Icon } from '@iconify/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Button } from 'src/components/ui/button';
 import { listAccounts } from 'src/features/accounts/api/accounts-api';
 import { listMediaAssets, uploadMediaAsset, type MediaAsset } from 'src/features/media/api/media-assets-api';
 import { apiErrorMessage } from 'src/shared/api/error-message';
-import { listConversations, listRecentMessages, sendMediaMessage, sendTextMessage, updateConversationAutomation, uploadAndSendMediaMessage, type Conversation, type Message } from '../api/messaging-api';
+import { listConversations, listMessagesPage, listRecentMessages, sendMediaMessage, sendTextMessage, updateConversationAutomation, uploadAndSendMediaMessage, type Conversation, type Message } from '../api/messaging-api';
 import ConversationList from '../ui/ConversationList';
 import MessageThread from '../ui/MessageThread';
+
+const CONVERSATION_PAGE_SIZE = 30;
+const MESSAGE_PAGE_SIZE = 100;
 
 export default function InboxPage() {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [draftRecipient, setDraftRecipient] = useState<string>();
+  const [conversationPage, setConversationPage] = useState(0);
+  const [requestedMessagePage, setRequestedMessagePage] = useState<number | null>(null);
   const accounts = useQuery({ queryKey: ['whatsapp', 'accounts'], queryFn: listAccounts });
   const activeAccounts = accounts.data?.filter((account) => account.status === 'ACTIVE') || [];
   const requestedAccountId = params.get('accountId');
@@ -22,38 +27,36 @@ export default function InboxPage() {
     : activeAccounts[0]?.id;
 
   const conversations = useQuery({
-    queryKey: ['whatsapp', 'conversations', accountId],
-    queryFn: () => listConversations(accountId!),
+    queryKey: ['whatsapp', 'conversations', accountId, conversationPage],
+    queryFn: () => listConversations(accountId!, conversationPage, CONVERSATION_PAGE_SIZE),
     enabled: Boolean(accountId),
     refetchInterval: 5_000,
   });
 
   const requestedConversationId = params.get('conversationId');
+  useEffect(() => setRequestedMessagePage(null), [requestedConversationId]);
   const selectedConversation = conversations.data?.content.find(
     (conversation) => conversation.id === requestedConversationId,
   );
   const messages = useQuery({
-    queryKey: ['whatsapp', 'messages', requestedConversationId, 'recent'],
-    queryFn: () => listRecentMessages(requestedConversationId!),
+    queryKey: ['whatsapp', 'messages', requestedConversationId, requestedMessagePage ?? 'latest'],
+    queryFn: () => requestedMessagePage === null
+      ? listRecentMessages(requestedConversationId!)
+      : listMessagesPage(requestedConversationId!, requestedMessagePage, MESSAGE_PAGE_SIZE),
     enabled: Boolean(selectedConversation),
     refetchInterval: 3_000,
   });
 
   const mediaAssets = useQuery({
     queryKey: ['media-assets', accountId],
-    queryFn: () => listMediaAssets(accountId!),
+    queryFn: () => listMediaAssets(accountId!, { size: 100 }),
     enabled: Boolean(accountId),
   });
 
   async function messageQueued(message: Message) {
-    if (selectedConversation) {
-      queryClient.setQueryData<{ content: Message[]; page: number; size: number; totalElements: number }>(
-        ['whatsapp', 'messages', selectedConversation.id, 'recent'],
-        (current) => current && !current.content.some((item) => item.id === message.id)
-          ? { ...current, content: [...current.content, message], totalElements: current.totalElements + 1 }
-          : current,
-      );
-    }
+    setRequestedMessagePage(null);
+    setConversationPage(0);
+    await queryClient.invalidateQueries({ queryKey: ['whatsapp', 'messages', message.conversationId] });
     await queryClient.invalidateQueries({ queryKey: ['whatsapp', 'conversations', accountId] });
     setDraftRecipient(undefined);
     setParams({ accountId: accountId!, conversationId: message.conversationId });
@@ -102,7 +105,7 @@ export default function InboxPage() {
     mutationFn: (enabled: boolean) => updateConversationAutomation(selectedConversation!.id, enabled),
     onSuccess: (updated) => {
       queryClient.setQueryData<{ content: Conversation[]; page: number; size: number; totalElements: number }>(
-        ['whatsapp', 'conversations', accountId],
+        ['whatsapp', 'conversations', accountId, conversationPage],
         (current) => current ? {
           ...current,
           content: current.content.map((conversation) => conversation.id === updated.id ? updated : conversation),
@@ -113,6 +116,8 @@ export default function InboxPage() {
 
   function selectAccount(nextAccountId: string) {
     setDraftRecipient(undefined);
+    setConversationPage(0);
+    setRequestedMessagePage(null);
     setParams({ accountId: nextAccountId });
   }
 
@@ -137,8 +142,8 @@ export default function InboxPage() {
       </div>
       {conversations.isError && <div className="rounded-md bg-lighterror p-3 text-sm text-error">{apiErrorMessage(conversations.error)}</div>}
       <div className="overflow-hidden rounded-xl border border-border shadow-sm lg:grid lg:grid-cols-[330px_minmax(0,1fr)]">
-        <div className={hasThread ? 'hidden lg:block' : 'block'}><ConversationList conversations={conversations.data?.content || []} selectedId={selectedConversation?.id} loading={conversations.isPending} onSelect={(conversation) => { setDraftRecipient(undefined); setParams({ accountId: accountId!, conversationId: conversation.id }); }} onStartConversation={(recipient) => { setDraftRecipient(recipient); setParams({ accountId: accountId! }); }} /></div>
-        <div className={hasThread ? 'block' : 'hidden lg:block'}><MessageThread conversation={selectedConversation} draftRecipient={draftRecipient} messages={messages.data?.content || []} loading={messages.isPending && Boolean(selectedConversation)} sending={send.isPending} mediaAssets={mediaAssets.data || []} mediaLoading={mediaAssets.isPending} mediaSending={sendMedia.isPending || uploadAndSendMedia.isPending} togglingAutomation={toggleAutomation.isPending} error={send.isError ? apiErrorMessage(send.error) : sendMedia.isError ? apiErrorMessage(sendMedia.error) : uploadAndSendMedia.isError ? apiErrorMessage(uploadAndSendMedia.error) : toggleAutomation.isError ? apiErrorMessage(toggleAutomation.error) : mediaAssets.isError ? apiErrorMessage(mediaAssets.error) : messages.isError ? apiErrorMessage(messages.error) : null} onBack={closeThread} onToggleAutomation={(enabled) => toggleAutomation.mutate(enabled)} onSend={async (text) => { try { await send.mutateAsync(text); return true; } catch { return false; } }} onSendMedia={async (asset, caption) => { try { await sendMedia.mutateAsync({ asset, caption }); return true; } catch { return false; } }} onUploadMedia={async (file, name, caption, saveToGallery) => { try { await uploadAndSendMedia.mutateAsync({ file, name, caption, saveToGallery }); return true; } catch { return false; } }} /></div>
+        <div className={hasThread ? 'hidden lg:block' : 'block'}><ConversationList conversations={conversations.data?.content || []} selectedId={selectedConversation?.id} loading={conversations.isPending} page={conversationPage} pageSize={CONVERSATION_PAGE_SIZE} totalElements={conversations.data?.totalElements || 0} onPageChange={(nextPage) => { setDraftRecipient(undefined); setConversationPage(nextPage); setParams({ accountId: accountId! }); }} onSelect={(conversation) => { setDraftRecipient(undefined); setRequestedMessagePage(null); setParams({ accountId: accountId!, conversationId: conversation.id }); }} onStartConversation={(recipient) => { setDraftRecipient(recipient); setParams({ accountId: accountId! }); }} /></div>
+        <div className={hasThread ? 'block' : 'hidden lg:block'}><MessageThread conversation={selectedConversation} draftRecipient={draftRecipient} messages={messages.data?.content || []} loading={messages.isPending && Boolean(selectedConversation)} messagePage={messages.data?.page || 0} messagePageSize={messages.data?.size || MESSAGE_PAGE_SIZE} messageTotal={messages.data?.totalElements || 0} onOlderMessages={() => setRequestedMessagePage(Math.max(0, (messages.data?.page || 0) - 1))} onNewerMessages={() => { const current = messages.data?.page || 0; const last = Math.max(0, Math.ceil((messages.data?.totalElements || 0) / MESSAGE_PAGE_SIZE) - 1); setRequestedMessagePage(current + 1 >= last ? null : current + 1); }} sending={send.isPending} mediaAssets={mediaAssets.data?.content || []} mediaLoading={mediaAssets.isPending} mediaSending={sendMedia.isPending || uploadAndSendMedia.isPending} togglingAutomation={toggleAutomation.isPending} error={send.isError ? apiErrorMessage(send.error) : sendMedia.isError ? apiErrorMessage(sendMedia.error) : uploadAndSendMedia.isError ? apiErrorMessage(uploadAndSendMedia.error) : toggleAutomation.isError ? apiErrorMessage(toggleAutomation.error) : mediaAssets.isError ? apiErrorMessage(mediaAssets.error) : messages.isError ? apiErrorMessage(messages.error) : null} onBack={closeThread} onToggleAutomation={(enabled) => toggleAutomation.mutate(enabled)} onSend={async (text) => { try { await send.mutateAsync(text); return true; } catch { return false; } }} onSendMedia={async (asset, caption) => { try { await sendMedia.mutateAsync({ asset, caption }); return true; } catch { return false; } }} onUploadMedia={async (file, name, caption, saveToGallery) => { try { await uploadAndSendMedia.mutateAsync({ file, name, caption, saveToGallery }); return true; } catch { return false; } }} /></div>
       </div>
     </div>
   );

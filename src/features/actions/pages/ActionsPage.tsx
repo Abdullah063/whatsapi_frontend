@@ -65,6 +65,7 @@ const statusMeta: Record<ActionExecutionStatus, { label: string; icon: string; v
 
 const numberFormatter = new Intl.NumberFormat('tr-TR');
 const dateFormatter = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' });
+const EXECUTION_PAGE_SIZE = 50;
 
 function formatDate(value: string | null): string {
   return value ? dateFormatter.format(new Date(value)) : '—';
@@ -124,6 +125,7 @@ export default function ActionsPage() {
   const [form, setForm] = useState<ActionForm>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [executionPage, setExecutionPage] = useState(0);
 
   useEffect(() => {
     if (!accountId && accounts.data?.length) setAccountId(accounts.data[0].id);
@@ -135,8 +137,8 @@ export default function ActionsPage() {
     enabled: Boolean(accountId),
   });
   const executions = useQuery({
-    queryKey: ['action-executions', accountId],
-    queryFn: () => listActionExecutions(accountId),
+    queryKey: ['action-executions', accountId, executionPage],
+    queryFn: () => listActionExecutions(accountId, executionPage, EXECUTION_PAGE_SIZE),
     enabled: Boolean(accountId),
     refetchInterval: 10_000,
   });
@@ -171,14 +173,14 @@ export default function ActionsPage() {
   });
 
   const summary = useMemo(() => {
-    const executionList = executions.data || [];
+    const executionList = executions.data?.content || [];
     return {
       active: (actions.data || []).filter((action) => action.enabled).length,
       pending: executionList.filter((execution) => ['QUEUED', 'DISPATCHING', 'PENDING'].includes(execution.status)).length,
       completed: executionList.filter((execution) => execution.status === 'COMPLETED').length,
       failed: executionList.filter((execution) => execution.status === 'FAILED' || execution.status === 'TIMED_OUT').length,
     };
-  }, [actions.data, executions.data]);
+  }, [actions.data, executions.data?.content]);
 
   const openCreate = () => {
     setEditing(null);
@@ -223,7 +225,7 @@ export default function ActionsPage() {
   return <div className="space-y-6">
     <section className="flex flex-col justify-between gap-5 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-center">
       <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-secondary text-white shadow-lg shadow-secondary/20"><Icon icon="solar:server-square-cloud-linear" width={25} /></div><div><p className="text-sm font-medium text-secondary">Dış sistem entegrasyonu</p><h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl">Aksiyonlar</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">WhatsApp komutlarıyla başka sistemlerde uzun süren işler başlatın; sonuç hazır olduğunda otomatik gönderin.</p></div></div>
-      <div className="flex flex-col gap-3 sm:flex-row">{accounts.data?.length ? <Select value={accountId} onValueChange={setAccountId}><SelectTrigger className="h-10 min-w-56 bg-background"><SelectValue /></SelectTrigger><SelectContent>{accounts.data.map((account) => <SelectItem key={account.id} value={account.id}>{account.displayName || account.externalPhoneNumberId}</SelectItem>)}</SelectContent></Select> : null}<Button variant="outline" onClick={() => setProtocolOpen(true)}><Icon icon="solar:code-file-linear" />Protokol</Button><Button onClick={openCreate}><Icon icon="solar:add-circle-linear" />Yeni aksiyon</Button></div>
+      <div className="flex flex-col gap-3 sm:flex-row">{accounts.data?.length ? <Select value={accountId} onValueChange={(value) => { setAccountId(value); setExecutionPage(0); }}><SelectTrigger className="h-10 min-w-56 bg-background"><SelectValue /></SelectTrigger><SelectContent>{accounts.data.map((account) => <SelectItem key={account.id} value={account.id}>{account.displayName || account.externalPhoneNumberId}</SelectItem>)}</SelectContent></Select> : null}<Button variant="outline" onClick={() => setProtocolOpen(true)}><Icon icon="solar:code-file-linear" />Protokol</Button><Button onClick={openCreate}><Icon icon="solar:add-circle-linear" />Yeni aksiyon</Button></div>
     </section>
 
     {!accounts.data?.length ? <Card className="border-dashed"><CardContent className="py-12 text-center"><Icon icon="solar:smartphone-linear" width={30} className="mx-auto text-muted-foreground" /><h2 className="mt-4 font-semibold">Önce WhatsApp hesabı bağlayın</h2></CardContent></Card> : <>
@@ -246,8 +248,8 @@ export default function ActionsPage() {
       <section className="space-y-4"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-lg font-semibold">Aksiyon geçmişi</h2><p className="mt-1 text-sm text-muted-foreground">Dış sisteme gönderilen ve callback bekleyen işlemler 10 saniyede bir yenilenir.</p></div><Button size="sm" variant="outline" disabled={executions.isFetching} onClick={() => executions.refetch()}><Icon icon="solar:refresh-linear" className={executions.isFetching ? 'animate-spin' : ''} />Yenile</Button></div>
         {executions.isPending && <div className="h-56 animate-pulse rounded-2xl bg-muted" />}
         {executions.isError && <Card><CardContent><p className="text-sm text-error">{apiErrorMessage(executions.error)}</p></CardContent></Card>}
-        {executions.data?.length === 0 && <Card className="border-dashed"><CardContent className="py-9 text-center"><Icon icon="solar:history-linear" width={28} className="mx-auto text-muted-foreground" /><p className="mt-3 font-medium">Henüz aksiyon çalışmadı</p></CardContent></Card>}
-        {Boolean(executions.data?.length) && <Card className="gap-0 overflow-hidden p-0 shadow-sm"><CardContent><Table><TableHeader><TableRow><TableHead className="pl-5">Aksiyon</TableHead><TableHead>Kullanıcı / istek</TableHead><TableHead>Durum</TableHead><TableHead>Deneme</TableHead><TableHead>Başlangıç</TableHead><TableHead>Sonuç</TableHead></TableRow></TableHeader><TableBody>{executions.data?.map((execution) => { const meta = statusMeta[execution.status]; return <TableRow key={execution.id}><TableCell className="pl-5"><p className="font-medium">{execution.actionName}</p><p className="mt-1 max-w-40 truncate font-mono text-[11px] text-muted-foreground">{execution.externalRequestId || execution.id}</p></TableCell><TableCell><p className="font-mono text-xs">{execution.customerWaId}</p><p className="mt-1 max-w-64 truncate text-xs text-muted-foreground">{execution.requestText}</p></TableCell><TableCell><Badge variant={meta.variant} className="gap-1"><Icon icon={meta.icon} />{meta.label}</Badge>{execution.lastError && <p className="mt-1 max-w-56 truncate text-[11px] text-error" title={execution.lastError}>{execution.lastError}</p>}</TableCell><TableCell>{execution.attempts}</TableCell><TableCell className="text-xs text-muted-foreground">{formatDate(execution.createdAt)}</TableCell><TableCell className="text-xs text-muted-foreground">{formatDate(execution.completedAt)}</TableCell></TableRow>; })}</TableBody></Table></CardContent></Card>}
+        {executions.data?.content.length === 0 && <Card className="border-dashed"><CardContent className="py-9 text-center"><Icon icon="solar:history-linear" width={28} className="mx-auto text-muted-foreground" /><p className="mt-3 font-medium">Henüz aksiyon çalışmadı</p></CardContent></Card>}
+        {Boolean(executions.data?.content.length) && <Card className="gap-0 overflow-hidden p-0 shadow-sm"><CardContent><Table><TableHeader><TableRow><TableHead className="pl-5">Aksiyon</TableHead><TableHead>Kullanıcı / istek</TableHead><TableHead>Durum</TableHead><TableHead>Deneme</TableHead><TableHead>Başlangıç</TableHead><TableHead>Sonuç</TableHead></TableRow></TableHeader><TableBody>{executions.data?.content.map((execution) => { const meta = statusMeta[execution.status]; return <TableRow key={execution.id}><TableCell className="pl-5"><p className="font-medium">{execution.actionName}</p><p className="mt-1 max-w-40 truncate font-mono text-[11px] text-muted-foreground">{execution.externalRequestId || execution.id}</p></TableCell><TableCell><p className="font-mono text-xs">{execution.customerWaId}</p><p className="mt-1 max-w-64 truncate text-xs text-muted-foreground">{execution.requestText}</p></TableCell><TableCell><Badge variant={meta.variant} className="gap-1"><Icon icon={meta.icon} />{meta.label}</Badge>{execution.lastError && <p className="mt-1 max-w-56 truncate text-[11px] text-error" title={execution.lastError}>{execution.lastError}</p>}</TableCell><TableCell>{execution.attempts}</TableCell><TableCell className="text-xs text-muted-foreground">{formatDate(execution.createdAt)}</TableCell><TableCell className="text-xs text-muted-foreground">{formatDate(execution.completedAt)}</TableCell></TableRow>; })}</TableBody></Table><div className="flex items-center justify-between border-t border-border p-4"><p className="text-xs text-muted-foreground">Toplam {executions.data?.totalElements.toLocaleString('tr-TR')} işlem · Sayfa {(executions.data?.page || 0) + 1}/{Math.max(1, Math.ceil((executions.data?.totalElements || 0) / EXECUTION_PAGE_SIZE))}</p><div className="flex gap-2"><Button size="sm" variant="outline" disabled={executionPage === 0 || executions.isFetching} onClick={() => setExecutionPage((value) => value - 1)}><Icon icon="solar:alt-arrow-left-linear" />Önceki</Button><Button size="sm" variant="outline" disabled={(executionPage + 1) * EXECUTION_PAGE_SIZE >= (executions.data?.totalElements || 0) || executions.isFetching} onClick={() => setExecutionPage((value) => value + 1)}>Sonraki<Icon icon="solar:alt-arrow-right-linear" /></Button></div></div></CardContent></Card>}
       </section>
     </>}
 

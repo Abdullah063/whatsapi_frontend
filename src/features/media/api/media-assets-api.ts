@@ -14,10 +14,36 @@ export interface MediaAsset {
   createdAt: string;
 }
 
+export interface MediaAssetPage {
+  content: MediaAsset[];
+  page: number;
+  size: number;
+  totalElements: number;
+  imageCount: number;
+  documentCount: number;
+  totalBytes: number;
+}
+
+export interface MediaAssetListOptions {
+  search?: string;
+  type?: MediaAssetType;
+  page?: number;
+  size?: number;
+}
+
 const basePath = (accountId: string) => `/api/v1/whatsapp/accounts/${accountId}/media-assets`;
 
-export function listMediaAssets(accountId: string): Promise<MediaAsset[]> {
-  return apiRequest(basePath(accountId));
+export function listMediaAssets(
+  accountId: string,
+  options: MediaAssetListOptions = {},
+): Promise<MediaAssetPage> {
+  const params = new URLSearchParams({
+    page: String(options.page ?? 0),
+    size: String(options.size ?? 24),
+  });
+  if (options.search?.trim()) params.set('search', options.search.trim());
+  if (options.type) params.set('type', options.type);
+  return apiRequest(`${basePath(accountId)}?${params.toString()}`);
 }
 
 export function uploadMediaAsset(accountId: string, file: File, name: string): Promise<MediaAsset> {

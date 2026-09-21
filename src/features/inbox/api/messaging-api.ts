@@ -45,15 +45,19 @@ export interface Message {
   updatedAt: string;
 }
 
-interface Page<T> {
+export interface Page<T> {
   content: T[];
   page: number;
   size: number;
   totalElements: number;
 }
 
-export function listConversations(accountId: string): Promise<Page<Conversation>> {
-  return apiRequest(`/api/v1/whatsapp/accounts/${accountId}/conversations?page=0&size=100`);
+export function listConversations(
+  accountId: string,
+  page = 0,
+  size = 30,
+): Promise<Page<Conversation>> {
+  return apiRequest(`/api/v1/whatsapp/accounts/${accountId}/conversations?page=${page}&size=${size}`);
 }
 
 export function updateConversationAutomation(
@@ -75,6 +79,16 @@ export async function listRecentMessages(conversationId: string): Promise<Page<M
   if (lastPage === 0) return firstPage;
   return apiRequest(
     `/api/v1/whatsapp/conversations/${conversationId}/messages?page=${lastPage}&size=${size}`,
+  );
+}
+
+export function listMessagesPage(
+  conversationId: string,
+  page: number,
+  size = 100,
+): Promise<Page<Message>> {
+  return apiRequest(
+    `/api/v1/whatsapp/conversations/${conversationId}/messages?page=${page}&size=${size}`,
   );
 }
 

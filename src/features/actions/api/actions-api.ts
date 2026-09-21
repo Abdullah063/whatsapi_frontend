@@ -58,6 +58,13 @@ export interface ActionExecution {
   updatedAt: string;
 }
 
+export interface ActionExecutionPage {
+  content: ActionExecution[];
+  page: number;
+  size: number;
+  totalElements: number;
+}
+
 const basePath = (accountId: string) => `/api/v1/whatsapp/accounts/${accountId}/actions`;
 
 export function listActions(accountId: string): Promise<ExternalAction[]> {
@@ -86,8 +93,12 @@ export function deleteAction(accountId: string, actionId: string): Promise<void>
   return apiRequest(`${basePath(accountId)}/${actionId}`, { method: 'DELETE' });
 }
 
-export function listActionExecutions(accountId: string, limit = 50): Promise<ActionExecution[]> {
-  return apiRequest(`${basePath(accountId)}/executions?limit=${limit}`);
+export function listActionExecutions(
+  accountId: string,
+  page = 0,
+  size = 50,
+): Promise<ActionExecutionPage> {
+  return apiRequest(`${basePath(accountId)}/executions?page=${page}&size=${size}`);
 }
 
 export function actionToInput(action: ExternalAction): SaveExternalActionInput {
