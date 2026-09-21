@@ -10,6 +10,7 @@ const DashboardPage = Loadable(lazy(() => import('../features/dashboard/pages/Da
 const AccountsPage = Loadable(lazy(() => import('../features/accounts/pages/AccountsPage')));
 const InboxPage = Loadable(lazy(() => import('../features/inbox/pages/InboxPage')));
 const AutomationsPage = Loadable(lazy(() => import('../features/automations/pages/AutomationsPage')));
+const ActionsPage = Loadable(lazy(() => import('../features/actions/pages/ActionsPage')));
 const MediaLibraryPage = Loadable(lazy(() => import('../features/media/pages/MediaLibraryPage')));
 const ContactsPage = Loadable(lazy(() => import('../features/contacts/pages/ContactsPage')));
 const ProfilePage = Loadable(lazy(() => import('../features/profile/pages/ProfilePage')));
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
           { path: 'whatsapp-accounts', element: <AccountsPage /> },
           { path: 'inbox', element: <InboxPage /> },
           { path: 'automations', element: <AutomationsPage /> },
+          { path: 'actions', element: <ActionsPage /> },
           { path: 'media-library', element: <MediaLibraryPage /> },
           { path: 'contacts', element: <ContactsPage /> },
           { path: 'templates', element: <ModulePage eyebrow="İçerik" title="Mesaj şablonları" description="Meta hesabınızdaki onaylı şablonları senkronize edin ve kampanyalarda kullanın." icon="solar:document-text-linear" capabilities={['Meta şablon senkronizasyonu', 'Dil ve durum filtreleri', 'Değişken önizleme', 'Kampanya seçimi']} /> },
